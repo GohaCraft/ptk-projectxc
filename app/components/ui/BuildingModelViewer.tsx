@@ -253,7 +253,7 @@ export default function BuildingModelViewer() {
     1: 1, 2: 1, 2.5: 1, 3: 1, 3.5: 1, 4: 1, 5: 1, 6: 1
   });
   const [showProceduralBlueprint, setShowProceduralBlueprint] = useState<boolean>(true);
-  const [showBlueprintFloor, setShowBlueprintFloor] = useState<boolean>(false);
+  const [showBlueprintFloor, setShowBlueprintFloor] = useState<boolean>(true);
 
   // Dynamic values based on active floor
   const blueprintImage = blueprintImages[activeFloor] || null;
@@ -726,7 +726,7 @@ export default function BuildingModelViewer() {
           blueprintHeightOffset={blueprintHeightOffset}
           showProceduralBlueprint={showProceduralBlueprint}
           showBlueprintFloor={showBlueprintFloor}
-          blueprintFloorUrl="/blueprint_floor1.pdf"
+          blueprintFloorUrl="/blueprint_floors.pdf"
           onWallMove={handleWallMoveIn3D}
           firstFrameReady={firstFrameReady}
           setFirstFrameReady={setFirstFrameReady}

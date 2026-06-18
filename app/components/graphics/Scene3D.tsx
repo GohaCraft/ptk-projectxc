@@ -588,12 +588,18 @@ export default function Scene3D({
             );
           })}
 
-          {/* PDF чертёж БТИ на полу — точный масштаб 1:200 */}
-          <FloorBlueprintPDF
-            pdfUrl={blueprintFloorUrl}
-            visible={showBlueprintFloor && activeFloor === 1}
-            opacity={0.82}
-          />
+          {/* PDF чертёж БТИ на полу каждого этажа — точный масштаб 1:200.
+              Стр. 18 → 1 этаж, 19 → 2 этаж, 20 → 3 этаж, 21 → 4 этаж.
+              Высота подложки = низ перекрытия активного этажа (1.5 + idx*2.9). */}
+          {Number.isInteger(activeFloor) && activeFloor >= 1 && activeFloor <= 4 && (
+            <FloorBlueprintPDF
+              pdfUrl={blueprintFloorUrl}
+              page={17 + activeFloor}
+              yOffset={1.5 + (activeFloor - 1) * 2.9 + 0.06}
+              visible={showBlueprintFloor}
+              opacity={0.82}
+            />
+          )}
 
           {/* Окна на фасаде */}
           <WindowsGroup activeFloor={activeFloor} wallsOpacity={wallsOpacity} />
