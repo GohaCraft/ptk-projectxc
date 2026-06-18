@@ -61,9 +61,9 @@ import {
 } from './EnvironmentProps';
 
 import {
-  FloorSlice,
   SlicedWall
 } from './InteriorLayout';
+import { FloorSlice } from './FloorSlice';
 
 import {
   CustomWall,
