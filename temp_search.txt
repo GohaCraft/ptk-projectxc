@@ -1,0 +1,106 @@
+2815-                </group>
+2816-              </group>
+2817-            </group>
+2818-            </group>
+2819-
+2820:            {/* ═══ ЛЕСТНИЦА И КРЫЛЬЦО (Усиленная и реалистичная) ═══ */}
+2821-            <group position={[0, 0, 0]}>
+2822-              {/* Крыльцо (Платформа перед дверями) */}
+2823-              <mesh position={[0, 1.275, 6.25]} castShadow receiveShadow>
+2824-                <boxGeometry args={[7.6, 2.55, 1.5]} />
+2825-                <ConcreteMaterial args={[7.6, 2.55, 1.5]} />
+2826-              </mesh>
+2827-              {/* Покрытие платформы */}
+2828-              <mesh position={[0, 2.55, 6.25]} castShadow receiveShadow>
+2829-                <boxGeometry args={[7.6, 0.04, 1.5]} />
+2830-                <meshStandardMaterial color="#8B3A3A" roughness={0.9} />
+2831-              </mesh>
+2832-
+2833-              {/* Ступени (сдвинуты вперед, чтобы начинаться от крыльца) */}
+2834-              <group position={[0, 0, 10.8]}>
+2835-                <Staircase
+2836-                  position={[0, 0, 0]}
+2837-                  args={[7.5, 2.55, 7.6]}
+2838-                  steps={17}
+2839-                  direction="south"
+2840-                  type="main"
+2841-                />
+2842-                {/* Тонкая металлическая окантовка по бокам лестницы вместо толстых стен */}
+2843-                {[-3.78, 3.78].map((x, i) => (
+2844-                  <mesh key={`trim-${i}`} position={[x, 1.275, 0]} rotation={[-(Math.atan2(2.55, 7.6)), 0, 0]} castShadow receiveShadow>
+2845-                    {/* length is approx hypotenuse of 2.55 and 7.6 => 8.01 */}
+2846-                    <boxGeometry args={[0.06, 0.15, 8.02]} />
+2847-                    <meshStandardMaterial color="#8B2131" roughness={0.6} metalness={0.2} />
+2848-                  </mesh>
+2849-                ))}
+2850-                
+2851-                {/* Перила */}
+2852-                {[-3.3, -1.1, 1.1, 3.3].map((x, i) => (
+2853-                  <group key={`prail-${i}`} position={[x, 0, 0]}>
+2854-                    {/* Верхний поручень */}
+2855-                    <mesh position={[0, 1.275 + 1.0, 0]} rotation={[Math.PI / 2 + Math.atan2(2.55, 7.6), 0, 0]} castShadow>
+2856-                      <cylinderGeometry args={[0.04, 0.04, 8.02, 10]} />
+2857-                      <meshStandardMaterial color="#8B2131" metalness={0.4} roughness={0.5} />
+2858-                    </mesh>
+2859-                    {/* Средний поручень */}
+2860-                    <mesh position={[0, 1.275 + 0.5, 0]} rotation={[Math.PI / 2 + Math.atan2(2.55, 7.6), 0, 0]} castShadow>
+2861-                      <cylinderGeometry args={[0.025, 0.025, 8.02, 10]} />
+2862-                      <meshStandardMaterial color="#8B2131" metalness={0.4} roughness={0.5} />
+2863-                    </mesh>
+2864-                    {/* Стойки */}
+2865-                    {[-3.3, -1.1, 1.1, 3.3].map((z, j) => {
+2866-                      const stairH = 2.55 * (1 - (z + 3.8) / 7.6);
+2867-                      return (
+2868-                        <mesh key={j} position={[0, stairH + 0.5, z]} castShadow>
+2869-                          <cylinderGeometry args={[0.03, 0.03, 1.0, 8]} />
+2870-                          <meshStandardMaterial color="#8B2131" metalness={0.4} roughness={0.5} />
+2871-                        </mesh>
+2872-                      );
+2873-                    })}
+2874-                  </group>
+2875-                ))}
+2876-              </group>
+2877-            </group>
+2878-
+2879-            {/* ─── ПАНДУС (ЗМЕЙКА) справа от лестницы ─── */}
+2880-            <group position={[0, 0, 0]}>
+2881-              {/* Площадка перед началом пандуса (стыкуется с крыльцом) */}
+2882-              <group position={[4.6, 0, 7.0]}>
+2883-                <mesh position={[0, 1.275, 0]} castShadow receiveShadow>
+2884-                  <boxGeometry args={[1.6, 2.55, 1.6]} />
+2885-                  <meshStandardMaterial color="#6B1A25" roughness={0.6} metalness={0.2} />
+2886-                </mesh>
+2887-                <mesh position={[0, 2.57, 0]}>
+2888-                  <boxGeometry args={[1.5, 0.04, 1.5]} />
+2889-                  <meshStandardMaterial color="#888" roughness={0.9} />
+2890-                </mesh>
+2891-              </group>
+2892-
+2893-              {/* Змейка - 3 марша Восток-Запад (каждый спускается на 0.85м, длина 6м) */}
+2894-              
+2895-              {/* Марш 1: вниз на Восток (от x=4.6 до x=10.6), Z=7.0, высота от 2.55 до 1.70 */}
+2896-              <group position={[7.6, 0, 7.0]}>
+2897-                <mesh rotation={[0, 0, -Math.atan2(0.85, 6.0)]} position={[0, 2.125, 0]} castShadow receiveShadow>
+2898-                  <boxGeometry args={[6.06, 0.2, 1.6]} />
+2899-                  <meshStandardMaterial color="#6B1A25" roughness={0.6} metalness={0.2} />
+2900-                </mesh>
+2901-                {/* Перила Марша 1 */}
+2902-                {[-0.75, 0.75].map((z, i) => (
+2903-                  <group key={`p1-rail-${i}`} position={[0, 0, z]}>
+2904-                    <mesh position={[0, 2.125 + 0.9, 0]} rotation={[0, 0, -Math.atan2(0.85, 6.0)]} castShadow>
+2905-                      <cylinderGeometry args={[0.035, 0.035, 6.06, 8]} />
+2906-                      <meshStandardMaterial color="#8B2131" metalness={0.4} roughness={0.5} />
+2907-                    </mesh>
+2908-                  </group>
+2909-                ))}
+2910-              </group>
+2911-
+2912-              {/* Промежуточная площадка 1 (высота 1.70) */}
+2913-              <group position={[11.4, 0, 8.6]}>
+2914-                <mesh position={[0, 0.85, 0]} castShadow receiveShadow>
+2915-                  <boxGeometry args={[1.6, 1.70, 4.8]} />
+2916-                  <meshStandardMaterial color="#6B1A25" roughness={0.6} metalness={0.2} />
+2917-                </mesh>
+2918-                <mesh position={[0, 1.72, 0]}>
+2919-                  <boxGeometry args={[1.5, 0.04, 4.7]} />
+2920-                  <meshStandardMaterial color="#888" roughness={0.9} />
