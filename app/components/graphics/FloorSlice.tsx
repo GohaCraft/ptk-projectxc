@@ -1,21 +1,20 @@
 "use client";
 
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 
-interface Shard {
-  pos: THREE.Vector3;
-  vel: THREE.Vector3;
-  rot: THREE.Vector3;
-  rotVel: THREE.Vector3;
-  scale: THREE.Vector3; // Tiny debris size properties
-  color: THREE.Color;
-  life: number;
-  decaySpeed: number; // Stored locally to avoid Math.random in frame loop
-  delay: number; // staggered emission for a cascading shatter
-}
-
+/**
+ * FloorSlice — показывает/прячет этаж с лёгкой анимацией «сборки/разборки».
+ *
+ * Переработано ради FPS: убрана прежняя система осколков (у каждого этажа был
+ * свой instancedMesh + физика с загрузкой буферов каждый кадр — это сильно
+ * резало кадры). Теперь — только трансформации (подъём снизу + лёгкое
+ * масштабирование), что почти ничего не стоит и выглядит плавно.
+ *
+ * Когда этаж «осел» (или полностью скрыт) — useFrame выходит сразу, не делая
+ * никакой работы в кадре.
+ */
 export const FloorSlice: React.FC<{
   activeFloor: number;
   floorIndex: number;
@@ -23,221 +22,53 @@ export const FloorSlice: React.FC<{
 }> = ({ activeFloor, floorIndex, children }) => {
   const isVisible = activeFloor >= floorIndex + 1;
   const groupRef = useRef<THREE.Group>(null);
-  
-  // EXTREMELY optimized: exactly 20 small shards to avoid any CPU/GPU bottleneck
-  const SHARD_COUNT = 20; 
-  const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
-  const shardsRef = useRef<Shard[]>([]);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  
-  const prevIsVisibleRef = useRef(isVisible);
+  // прогресс 0..1: 0 — спрятан (внизу/сжат), 1 — на месте
+  const prog = useRef(isVisible ? 1 : 0);
 
-  // Trigger high-velocity wall disintegration with mini debris fragments
-  const triggerWallShatter = () => {
-    const newShards: Shard[] = [];
-    
-    for (let i = 0; i < SHARD_COUNT; i++) {
-      // Map out starting positions matching the building footprint
-      const angle = (i / SHARD_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-      const radiusX = 6 + Math.random() * 10;
-      const radiusZ = 3 + Math.random() * 6;
-      
-      const px = Math.cos(angle) * radiusX;
-      // Distributed nicely vertically within the floor boundary
-      const py = (Math.random() - 0.5) * 2.0; 
-      const pz = Math.sin(angle) * radiusZ;
-      
-      // Fast explosive outward direction
-      const dir = new THREE.Vector3(px, py * 0.1, pz).normalize();
-      dir.x += (Math.random() - 0.5) * 0.35;
-      dir.z += (Math.random() - 0.5) * 0.35;
-      dir.normalize();
-
-      // Increased velocity for a snappy, spectacular explosive puff
-      const speed = 42 + Math.random() * 38; 
-      const vel = dir.multiplyScalar(speed);
-      vel.y = 8 + Math.random() * 15; // Fast upward and outward toss
-
-      // Cute, petite stone & brick chunk proportions
-      const shapeRoll = Math.random();
-      const scaleVec = new THREE.Vector3(1, 1, 1);
-      if (shapeRoll < 0.4) {
-        // Small brick-like chip
-        scaleVec.set(0.24 + Math.random() * 0.18, 0.12 + Math.random() * 0.1, 0.16 + Math.random() * 0.12);
-      } else if (shapeRoll < 0.8) {
-        // Flat concrete flake
-        scaleVec.set(0.16 + Math.random() * 0.12, 0.24 + Math.random() * 0.18, 0.16 + Math.random() * 0.12);
-      } else {
-        // Petite cubic stone aggregate
-        scaleVec.set(0.18 + Math.random() * 0.14, 0.18 + Math.random() * 0.14, 0.18 + Math.random() * 0.14);
-      }
-
-      // Elegant architectural colors matching the Norilsk Poly model
-      const colorRoll = Math.random();
-      const col = new THREE.Color();
-      if (colorRoll < 0.45) {
-        // Red Terracotta Brick
-        col.setHSL(0.04 + Math.random() * 0.02, 0.78, 0.44 + Math.random() * 0.14);
-      } else if (colorRoll < 0.8) {
-        // Slate Concrete Gray
-        const gray = 0.55 + Math.random() * 0.25;
-        col.setRGB(gray, gray, gray);
-      } else {
-        // Plaster & Limestone cream white
-        const cream = 0.9 + Math.random() * 0.1;
-        col.setRGB(cream, cream * 0.84, cream * 0.7);
-      }
-
-      // Softer dissolve: expires cleanly in ~0.4 - 0.7 seconds
-      const decaySpeed = 1.6 + Math.random() * 1.2;
-      // Каскад: осколки вылетают не разом, а волной (по радиусу)
-      const delay = (radiusX - 6) / 10 * 0.12 + Math.random() * 0.05;
-
-      newShards.push({
-        pos: new THREE.Vector3(px, py, pz),
-        vel,
-        rot: new THREE.Vector3(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
-        rotVel: new THREE.Vector3(
-          (Math.random() - 0.5) * 24,
-          (Math.random() - 0.5) * 24,
-          (Math.random() - 0.5) * 24
-        ),
-        scale: scaleVec,
-        color: col,
-        life: 1.0,
-        decaySpeed,
-        delay
-      });
-    }
-
-    shardsRef.current = newShards;
-  };
-
+  // Стартовые состояния при смене видимости (без дёрганья)
   useEffect(() => {
-    if (prevIsVisibleRef.current !== isVisible) {
-      prevIsVisibleRef.current = isVisible;
-      
-      const g = groupRef.current;
-      if (!g) return;
-
-      if (isVisible) {
-        // --- ASSEMBLY STATE ---
-        // Slide perfectly from underneath
-        g.position.y = -22;
-        g.visible = true;
-      } else {
-        // --- SHATTER STATE ---
-        triggerWallShatter();
+    const g = groupRef.current;
+    if (!g) return;
+    if (isVisible) {
+      g.visible = true;
+      // если появляемся «с нуля» — стартуем чуть снизу
+      if (prog.current >= 1) {
+        g.position.y = 0;
+        g.scale.set(1, 1, 1);
       }
     }
   }, [isVisible]);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     const g = groupRef.current;
     if (!g) return;
-
-    // Direct clamping protects physics from breaking or lag skipping during frames drops
     const dt = Math.min(delta, 0.03);
+    const target = isVisible ? 1 : 0;
+    const p = prog.current;
 
-    if (isVisible) {
-      // Smoothly slide the active floor up into its slot
-      const settled = Math.abs(g.position.y) < 0.003;
-      if (!settled) {
-        g.position.y = THREE.MathUtils.damp(g.position.y, 0, 7.5, dt);
-        g.position.x = 0;
-        g.position.z = 0;
-        g.rotation.set(0, 0, 0);
-        g.scale.set(1, 1, 1);
-      }
-      g.visible = true;
-      // ОПТИМИЗАЦИЯ: этаж на месте и осколков нет — кадр пропускаем целиком.
-      if (settled && !shardsRef.current.some(s => s.life > 0)) return;
-    } else {
-      // PERFORMANCE OPTIMIZATION: If we are not visible and all shards are dead,
-      // completely de-register rendering and skip update frames!
-      const shards = shardsRef.current;
-      const isAnyShardActive = shards.some(s => s.life > 0);
-      if (!isAnyShardActive) {
+    // Полностью осел/скрыт — ничего не считаем в кадре.
+    if (Math.abs(p - target) < 0.004) {
+      if (target === 1) {
+        if (g.position.y !== 0) { g.position.y = 0; g.scale.set(1, 1, 1); }
+        g.visible = true;
+      } else if (g.visible) {
         g.visible = false;
-        return;
       }
+      return;
     }
 
-    // Update dynamic debris shards
-    const shards = shardsRef.current;
-    const sMesh = instancedMeshRef.current;
-    
-    if (sMesh) {
-      let isAnyDebrisActive = false;
+    const np = THREE.MathUtils.damp(p, target, 9, dt);
+    prog.current = np;
+    g.visible = np > 0.01;
 
-      for (let i = 0; i < SHARD_COUNT; i++) {
-        const s = shards[i];
-        if (s && s.delay > 0) {
-          // ещё не вылетел — держим скрытым, но кадр активен
-          s.delay -= dt;
-          dummy.position.set(0, -999, 0);
-          dummy.scale.set(0, 0, 0);
-          dummy.updateMatrix();
-          sMesh.setMatrixAt(i, dummy.matrix);
-          isAnyDebrisActive = true;
-        } else if (s && s.life > 0) {
-          // Ballistics: Gravity + fast air resistance
-          s.vel.y -= 14 * dt;
-          s.vel.multiplyScalar(Math.pow(0.91, dt * 60)); 
-          s.pos.addScaledVector(s.vel, dt);
-
-          // Fast tumbling spin
-          s.rot.addScaledVector(s.rotVel, dt);
-
-          //Snappy decay
-          s.life = Math.max(0, s.life - s.decaySpeed * dt);
-
-          dummy.position.copy(s.pos);
-          dummy.rotation.set(s.rot.x, s.rot.y, s.rot.z);
-
-          // Shrink size to zero as life expires
-          const dynamicScale = s.scale.clone().multiplyScalar(s.life);
-          dummy.scale.copy(dynamicScale);
-          dummy.updateMatrix();
-
-          sMesh.setMatrixAt(i, dummy.matrix);
-          sMesh.setColorAt(i, s.color);
-          isAnyDebrisActive = true;
-        } else {
-          // Send out-of-bounds
-          dummy.position.set(0, -999, 0);
-          dummy.scale.set(0, 0, 0);
-          dummy.updateMatrix();
-          sMesh.setMatrixAt(i, dummy.matrix);
-        }
-      }
-
-      sMesh.instanceMatrix.needsUpdate = true;
-      if (sMesh.instanceColor) sMesh.instanceColor.needsUpdate = true;
-      sMesh.visible = isAnyDebrisActive;
-    }
+    // плавная кривая (smoothstep) — мягкий старт/финиш; чистый подъём снизу
+    const e = np * np * (3 - 2 * np);
+    g.position.y = (1 - e) * -9;
   });
 
   return (
-    <group ref={groupRef}>
-      {/* 
-        CRITICAL PERFORMANCE optimization:
-        We toggle visibility of the actual rich floor model child meshes instantly.
-        No physics are ever computed on complex scene models anymore!
-      */}
-      <group visible={isVisible}>
-        {children}
-      </group>
-      
-      {/* Super highly optimized single draw-call shards representation */}
-      <instancedMesh
-        ref={instancedMeshRef}
-        args={[null as any, null as any, SHARD_COUNT]}
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        {/* Simple material for ultimate zero-overhead drawing performance */}
-        <meshBasicMaterial />
-      </instancedMesh>
+    <group ref={groupRef} visible={isVisible}>
+      {children}
     </group>
   );
 };
