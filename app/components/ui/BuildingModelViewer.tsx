@@ -471,41 +471,66 @@ export default function BuildingModelViewer() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const WALLS_VERSION = "v86_millimeter_grid"; // Increment version to force reset from old browser cache
-      const defaults = generateAllDefaultWalls();
-      const savedVersion = localStorage.getItem('npc_walls_version');
+    if (typeof window === 'undefined') return;
+    // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
+    // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
+    const WALLS_VERSION = "v87_bti_trace";
+    const defaults = generateAllDefaultWalls();
 
-      if (savedVersion !== WALLS_VERSION) {
-        localStorage.setItem('npc_walls_version', WALLS_VERSION);
-        localStorage.setItem('npc_custom_walls', JSON.stringify(defaults));
-        localStorage.removeItem('npc_blueprint_images');
-        localStorage.removeItem('npc_blueprint_opacities');
-        localStorage.removeItem('npc_blueprint_scales');
-        localStorage.removeItem('npc_blueprint_offsets');
-        setCustomWalls(defaults);
-        setOriginalWalls(defaults);
-        console.log("[Walls Sync] Stale walls version detected. Reset custom walls and cleared blueprint overlay cache.");
-        return;
+    const applyTraced = async (): Promise<boolean> => {
+      try {
+        const res = await fetch('/walls.json', { cache: 'no-store' });
+        if (!res.ok) return false;
+        const raw = await res.json();
+        if (!Array.isArray(raw) || raw.length === 0) return false;
+        const walls: CustomWall[] = raw.map((w: any, i: number) => ({
+          id: w.id || `bti_${w.blockType}_${w.floorIdx}_${i}`,
+          blockType: w.blockType,
+          floorIdx: w.floorIdx,
+          x: w.x, z: w.z, w: w.w, d: w.d,
+          isCustom: true,
+        }));
+        setCustomWalls(walls);
+        setOriginalWalls(walls);
+        localStorage.setItem('npc_custom_walls', JSON.stringify(walls));
+        return true;
+      } catch {
+        return false;
       }
+    };
 
-      const saved = localStorage.getItem('npc_custom_walls');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setCustomWalls(parsed);
-          setOriginalWalls(parsed);
-        } catch (e) {
-          console.error("Failed to parse saved walls: ", e);
+    const savedVersion = localStorage.getItem('npc_walls_version');
+    if (savedVersion !== WALLS_VERSION) {
+      localStorage.setItem('npc_walls_version', WALLS_VERSION);
+      localStorage.removeItem('npc_blueprint_images');
+      localStorage.removeItem('npc_blueprint_opacities');
+      localStorage.removeItem('npc_blueprint_scales');
+      localStorage.removeItem('npc_blueprint_offsets');
+      applyTraced().then((ok) => {
+        if (!ok) {
           setCustomWalls(defaults);
           setOriginalWalls(defaults);
           localStorage.setItem('npc_custom_walls', JSON.stringify(defaults));
         }
-      } else {
-        setCustomWalls(defaults);
-        setOriginalWalls(defaults);
-        localStorage.setItem('npc_custom_walls', JSON.stringify(defaults));
+      });
+      return;
+    }
+
+    const saved = localStorage.getItem('npc_custom_walls');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setCustomWalls(parsed);
+        setOriginalWalls(parsed);
+      } catch (e) {
+        applyTraced().then((ok) => {
+          if (!ok) { setCustomWalls(defaults); setOriginalWalls(defaults); }
+        });
       }
+    } else {
+      applyTraced().then((ok) => {
+        if (!ok) { setCustomWalls(defaults); setOriginalWalls(defaults); }
+      });
     }
   }, []);
 
@@ -620,11 +645,20 @@ export default function BuildingModelViewer() {
       setEditorMessage("Нажмите ЕЩЁ РАЗ для сброса всех ручных стен к оригиналу на чертеже!");
       return;
     }
-    const defaults = generateAllDefaultWalls();
-    setCustomWalls(defaults);
     setSelectedWallId(null);
     setIsResetConfirming(false);
-    setEditorMessage("Временная планировка возвращена к чертежу! Нажмите «Сохранить» для подтверждения.");
+    fetch('/walls.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((raw: any[]) => {
+        const walls: CustomWall[] = raw.map((w, i) => ({
+          id: w.id || `bti_${w.blockType}_${w.floorIdx}_${i}`,
+          blockType: w.blockType, floorIdx: w.floorIdx,
+          x: w.x, z: w.z, w: w.w, d: w.d, isCustom: true,
+        }));
+        setCustomWalls(walls);
+      })
+      .catch(() => setCustomWalls(generateAllDefaultWalls()));
+    setEditorMessage("Планировка возвращена к чертежу БТИ! Нажмите «Сохранить» для подтверждения.");
     setTimeout(() => setEditorMessage(null), 4000);
   };
 
