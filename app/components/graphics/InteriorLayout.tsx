@@ -131,8 +131,6 @@ export const SlicedWall = ({
   const t = 0.6; // толщина внешних стен
   
   const isCenterBlock = blockType === 'B';
-  const isLeftBlock = blockType === 'B1';
-  const isRightBlock = blockType === 'B2';
 
   return (
     <group>
@@ -140,14 +138,18 @@ export const SlicedWall = ({
         const floorY = baseY + floorH / 2 + f * floorH;
         const isFirstFloor = f === 0;
         
-        const isCurrentFloorActive = activeFloor === (f + 1);
-        const outerOp = (activeFloor !== 5 && isCurrentFloorActive) ? Math.min(wallsOpacity, 0.22) : wallsOpacity;
+        // Стены непрозрачны при просмотре; прозрачностью управляет только слайдер wallsOpacity.
+        const outerOp = wallsOpacity;
         
         // Проёмы (проходы во внутренний двор) в торцевых стенах 1-го этажа.
-        // {z, w} — центр и ширина проёма в локальных координатах блока.
+        // {z, w} — центр и ширина проёма в ЛОКАЛЬНЫХ координатах блока.
+        // ВАЖНО: межблочные стены идут в два слоя (стена крыла + стена центра),
+        // совпадают по МИРОВОМУ z. Проёмы открываем в обеих стенах синхронно:
+        //   Б1.восток (world z = 9.415 + lz) ↔ Б.запад (world z = lz)
+        //   Б.восток  (world z = lz)         ↔ Б2.запад (world z = -3.085 + lz)
         const westGaps: {z: number; w: number}[] = isFirstFloor ? (
-          blockType === 'B'  ? [{ z: 6.115, w: 2.65 }] :
-          blockType === 'B2' ? [{ z: -3.4575, w: 2.915 }] : []
+          blockType === 'B'  ? [{ z: -11.135, w: 2.31 }, { z: 10.525, w: 3.13 }] :
+          blockType === 'B2' ? [{ z: 14.375, w: 1.78 }] : []
         ) : [];
         const eastGaps: {z: number; w: number}[] = isFirstFloor ? (
           blockType === 'B1' ? [{ z: -20.55, w: 2.31 }, { z: 1.11, w: 3.13 }] :
