@@ -252,7 +252,7 @@ export default function BuildingModelViewer() {
   const [blueprintPdfTotalPages, setBlueprintPdfTotalPages] = useState<Record<number, number>>({
     1: 1, 2: 1, 2.5: 1, 3: 1, 3.5: 1, 4: 1, 5: 1, 6: 1
   });
-  const [showProceduralBlueprint, setShowProceduralBlueprint] = useState<boolean>(true);
+  const [showProceduralBlueprint, setShowProceduralBlueprint] = useState<boolean>(false);
   const [showBlueprintFloor, setShowBlueprintFloor] = useState<boolean>(true);
 
   // Dynamic values based on active floor
@@ -474,7 +474,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v87_bti_trace";
+    const WALLS_VERSION = "v88_bti_underlay";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -506,6 +506,7 @@ export default function BuildingModelViewer() {
       localStorage.removeItem('npc_blueprint_opacities');
       localStorage.removeItem('npc_blueprint_scales');
       localStorage.removeItem('npc_blueprint_offsets');
+      localStorage.removeItem('npc_show_procedural_blueprint');
       applyTraced().then((ok) => {
         if (!ok) {
           setCustomWalls(defaults);

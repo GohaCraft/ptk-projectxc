@@ -45,6 +45,7 @@ function WingPlane({
     <mesh
       position={[entry.origin[0], floorY, entry.origin[1]]}
       rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={2}
     >
       <planeGeometry args={[entry.size[0], entry.size[1]]} />
       <meshBasicMaterial
@@ -82,15 +83,19 @@ export function PlanUnderlay({
   if (!visible) return null;
   if (!Number.isInteger(activeFloor) || activeFloor < 1 || activeFloor > 4) return null;
 
-  // Низ перекрытия активного этажа (совпадает с базой стен блока Б)
-  const floorY = 1.5 + (activeFloor - 1) * 2.9 + 0.06;
   const entries = manifest.filter((e) => e.floor === activeFloor);
 
   return (
     <group>
-      {entries.map((e) => (
-        <WingPlane key={`${e.floor}-${e.block}`} entry={e} floorY={floorY} opacity={opacity} />
-      ))}
+      {entries.map((e) => {
+        // Высота межэтажки разная: блок Б = 2.9 м, крылья Б1/Б2 = 3.3 м.
+        // Кладём подложку чуть выше плиты перекрытия (top плиты = база + 0.2).
+        const floorH = e.block === 'B' ? 2.9 : 3.3;
+        const floorY = 1.5 + (activeFloor - 1) * floorH + 0.26;
+        return (
+          <WingPlane key={`${e.floor}-${e.block}`} entry={e} floorY={floorY} opacity={opacity} />
+        );
+      })}
     </group>
   );
 }

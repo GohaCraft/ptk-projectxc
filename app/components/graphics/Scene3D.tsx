@@ -595,7 +595,7 @@ export default function Scene3D({
           <PlanUnderlay
             activeFloor={activeFloor}
             visible={showBlueprintFloor}
-            opacity={0.82}
+            opacity={0.95}
           />
 
           {/* Окна на фасаде */}
