@@ -141,17 +141,19 @@ export const SlicedWall = ({
         // Стены непрозрачны при просмотре; прозрачностью управляет только слайдер wallsOpacity.
         const outerOp = wallsOpacity;
         
-        // Проёмы (проходы во внутренний двор) в торцевых стенах 1-го этажа.
+        // Проёмы (проходы) в торцевых стенах. Этаж 1 — во двор/между блоками,
+        // этаж 2 — межблочные проходы у лестниц (те же позиции по z).
         // {z, w} — центр и ширина проёма в ЛОКАЛЬНЫХ координатах блока.
         // ВАЖНО: межблочные стены идут в два слоя (стена крыла + стена центра),
         // совпадают по МИРОВОМУ z. Проёмы открываем в обеих стенах синхронно:
         //   Б1.восток (world z = 9.415 + lz) ↔ Б.запад (world z = lz)
         //   Б.восток  (world z = lz)         ↔ Б2.запад (world z = -3.085 + lz)
-        const westGaps: {z: number; w: number}[] = isFirstFloor ? (
+        const gapFloor = (f === 0 || f === 1);
+        const westGaps: {z: number; w: number}[] = gapFloor ? (
           blockType === 'B'  ? [{ z: -11.135, w: 2.31 }, { z: 10.525, w: 3.13 }] :
           blockType === 'B2' ? [{ z: 14.375, w: 1.78 }] : []
         ) : [];
-        const eastGaps: {z: number; w: number}[] = isFirstFloor ? (
+        const eastGaps: {z: number; w: number}[] = gapFloor ? (
           blockType === 'B1' ? [{ z: -20.55, w: 2.31 }, { z: 1.11, w: 3.13 }] :
           blockType === 'B'  ? [{ z: 11.29, w: 1.78 }] : []
         ) : [];
