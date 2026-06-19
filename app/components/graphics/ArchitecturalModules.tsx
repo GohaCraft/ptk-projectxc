@@ -549,53 +549,59 @@ export const SolidWall = ({ position, width, length, y1, y2 }: { position: [numb
 
 // ──────────────────────────────────────────────────────────────────
 //  ЦЕНТРАЛЬНЫЙ ХОЛЛ ЛИТ. Б — маршевая лестница 1→2 этаж (по фото)
-//  Прямой одномаршевый марш со сплошным (закрытым) низом, верхней
-//  площадкой и хромированным ограждением (круглые стойки + 3 трубы).
+//  Прямой марш с ГЛАДКИМ серым закрытым косоуром (боковая стенка),
+//  серыми ступенями, верхней площадкой и простым светло-серым
+//  ограждением (вертикальные балясины + поручень).
 //  Локальная система: марш поднимается вдоль +Z, вверх по +Y от 0.
 // ──────────────────────────────────────────────────────────────────
-const ChromeMat = (props: any) => (
-  <meshStandardMaterial color="#cdd2d6" metalness={0.85} roughness={0.18} {...props} />
+const RailMat = (props: any) => (
+  <meshStandardMaterial color="#d2d6d9" metalness={0.3} roughness={0.45} {...props} />
+);
+const PlasterGray = (props: any) => (
+  <meshStandardMaterial color="#bcc0c4" roughness={0.85} {...props} />
 );
 
-const HandRail = ({ side, run, rise, postH = 0.98 }: { side: number; run: number; rise: number; postH?: number }) => {
+const SlopeRail = ({ side, run, rise, h = 0.95 }: { side: number; run: number; rise: number; h?: number }) => {
   const ang = Math.atan2(rise, run);
   const L = Math.hypot(run, rise);
-  const nPost = Math.max(2, Math.round(run / 0.95));
-  const posts = [];
-  for (let k = 0; k <= nPost; k++) {
-    const t = k / nPost;
+  const n = Math.max(3, Math.round(run / 0.22));
+  const bal = [];
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
     const z = t * run;
     const y = t * rise;
-    posts.push(
-      <mesh key={`post-${side}-${k}`} castShadow position={[side, y + postH / 2, z]}>
-        <cylinderGeometry args={[0.024, 0.024, postH, 14]} />
-        <ChromeMat />
+    bal.push(
+      <mesh key={`bal-${side}-${k}`} castShadow position={[side, y + h / 2, z]}>
+        <boxGeometry args={[0.028, h, 0.028]} />
+        <RailMat />
       </mesh>
     );
   }
-  // верхний поручень + 2 промежуточные трубы (вдоль уклона)
-  const tubes = [postH - 0.03, postH * 0.64, postH * 0.30].map((h, idx) => (
-    <mesh
-      key={`tube-${side}-${idx}`}
-      position={[side, rise / 2 + h, run / 2]}
-      rotation={[Math.PI / 2 - ang, 0, 0]}
-    >
-      <cylinderGeometry args={[0.022, 0.022, L + 0.05, 14]} />
-      <ChromeMat />
-    </mesh>
-  ));
-  return <group>{posts}{tubes}</group>;
+  return (
+    <group>
+      {bal}
+      {/* поручень + промежуточный профиль (вдоль уклона) */}
+      <mesh position={[side, rise / 2 + h, run / 2]} rotation={[-ang, 0, 0]}>
+        <boxGeometry args={[0.06, 0.05, L]} />
+        <RailMat />
+      </mesh>
+      <mesh position={[side, rise / 2 + h * 0.5, run / 2]} rotation={[-ang, 0, 0]}>
+        <boxGeometry args={[0.04, 0.03, L]} />
+        <RailMat />
+      </mesh>
+    </group>
+  );
 };
 
 export const CentralLobbyStair = ({
   position,
   rotation = [0, 0, 0],
-  width = 1.6,
+  width = 1.5,
   rise = 2.9,
   steps = 16,
   run = 4.8,
-  landing = 1.4,
-  railSides = ['left'],
+  landing = 1.3,
+  railSide = 'right',
 }: {
   position: [number, number, number];
   rotation?: [number, number, number];
@@ -604,22 +610,31 @@ export const CentralLobbyStair = ({
   steps?: number;
   run?: number;
   landing?: number;
-  railSides?: ('left' | 'right')[];
+  railSide?: 'left' | 'right';
 }) => {
   const tread = run / steps;
   const riser = rise / steps;
+  const sideShape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    s.lineTo(run, 0);
+    s.lineTo(run, rise);
+    s.lineTo(0, riser);
+    s.closePath();
+    return s;
+  }, [run, rise, riser]);
+  const sx = railSide === 'right' ? width / 2 : -width / 2;
+  const railX = sx + (railSide === 'right' ? 0.06 : -0.06);
   const stepMeshes = [];
   for (let i = 0; i < steps; i++) {
     const top = (i + 1) * riser;
     const z = i * tread + tread / 2;
-    // сплошная проступь от пола (закрытый низ как на фото)
     stepMeshes.push(
       <mesh key={`riser-${i}`} castShadow receiveShadow position={[0, top / 2, z]}>
         <boxGeometry args={[width, top, tread]} />
         <GreyConcreteMaterial />
       </mesh>
     );
-    // отделка проступи (светлая плитка)
     stepMeshes.push(
       <mesh key={`tread-${i}`} receiveShadow position={[0, top + 0.011, z]}>
         <boxGeometry args={[width, 0.022, tread + 0.02]} />
@@ -627,10 +642,14 @@ export const CentralLobbyStair = ({
       </mesh>
     );
   }
-  const railX = width / 2 + 0.02;
   return (
     <group position={position} rotation={rotation as any}>
       {stepMeshes}
+      {/* гладкий серый косоур (видимая боковая стенка) */}
+      <mesh position={[sx, 0, 0]} rotation={[0, -Math.PI / 2, 0]} castShadow receiveShadow>
+        <extrudeGeometry args={[sideShape, { depth: 0.05, bevelEnabled: false }]} />
+        <PlasterGray />
+      </mesh>
       {/* верхняя площадка */}
       <mesh castShadow receiveShadow position={[0, rise - 0.11, run + landing / 2]}>
         <boxGeometry args={[width, 0.22, landing]} />
@@ -640,27 +659,25 @@ export const CentralLobbyStair = ({
         <boxGeometry args={[width, 0.022, landing]} />
         <meshStandardMaterial color="#d9d5cd" roughness={0.7} />
       </mesh>
-      {/* ограждение по маршу */}
-      {railSides.includes('left') && <HandRail side={-railX} run={run} rise={rise} />}
-      {railSides.includes('right') && <HandRail side={railX} run={run} rise={rise} />}
-      {/* ограждение по площадке (продолжение) */}
-      {railSides.includes('left') && (
-        <group position={[-railX, rise, run]}>
-          {[0, landing].map((dz, i) => (
-            <mesh key={`lp-${i}`} castShadow position={[0, 0.49, dz]}>
-              <cylinderGeometry args={[0.024, 0.024, 0.98, 14]} />
-              <ChromeMat />
-            </mesh>
-          ))}
-          <mesh position={[0, 0.95, landing / 2]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.022, 0.022, landing, 14]} />
-            <ChromeMat />
+      {/* ограждение вдоль марша */}
+      <SlopeRail side={railX} run={run} rise={rise} />
+      {/* ограждение вдоль площадки */}
+      <group position={[railX, rise, run]}>
+        {[0, landing].map((dz, i) => (
+          <mesh key={`lp-${i}`} castShadow position={[0, 0.49, dz]}>
+            <boxGeometry args={[0.028, 0.98, 0.028]} />
+            <RailMat />
           </mesh>
-        </group>
-      )}
+        ))}
+        <mesh position={[0, 0.95, landing / 2]}>
+          <boxGeometry args={[0.06, 0.05, landing]} />
+          <RailMat />
+        </mesh>
+      </group>
     </group>
   );
 };
+
 
 // ──────────────────────────────────────────────────────────────────
 //  MURAL MOSAIC & HELPERS
