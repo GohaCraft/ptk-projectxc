@@ -354,16 +354,16 @@ export default function Scene3D({
             <FloorSlice activeFloor={activeFloor} floorIndex={0}>
               <group>
                 <CentralLobbyStair
-                  position={[-13.5, 1.5, 10.0]}
-                  rotation={[0, Math.PI, 0]}
+                  position={[-13.8, 1.5, 6.0]}
+                  rotation={[0, Math.PI / 2, 0]}
                   width={1.5}
                   rise={2.9}
                   total={16}
-                  split={6}
+                  split={3}
                   tread={0.3}
                 />
                 {/* Дверь у основания лестницы (светлое дерево) */}
-                <group position={[-14.35, 1.5, 10.0]}>
+                <group position={[-14.35, 1.5, 6.0]}>
                   <mesh castShadow receiveShadow position={[0, 1.05, 0]}>
                     <boxGeometry args={[0.1, 2.1, 0.95]} />
                     <meshStandardMaterial color="#c9a36a" roughness={0.6} />
