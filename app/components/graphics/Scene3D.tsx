@@ -40,6 +40,7 @@ import {
 
 import ReactPdfFloorOverlay from './ReactPdfFloorOverlay';
 import { FloorBlueprintPDF } from './FloorBlueprintPDF';
+import { PlanUnderlay } from './PlanUnderlay';
 
 import {
   ZguLogoDiamond,
@@ -588,11 +589,13 @@ export default function Scene3D({
             );
           })}
 
-          {/* PDF чертёж БТИ на полу — точный масштаб 1:200 */}
-          <FloorBlueprintPDF
-            pdfUrl={blueprintFloorUrl}
-            visible={showBlueprintFloor && activeFloor === 1}
-            opacity={0.82}
+          {/* Чертёж БТИ на полу, привязанный отдельно по каждому крылу
+              (Б/Б1/Б2). Стр. 18→1эт, 19→2эт, 20→3эт, 21→4эт уже учтены
+              в /plan_manifest.json. Это устраняет расхождение план↔модель. */}
+          <PlanUnderlay
+            activeFloor={activeFloor}
+            visible={showBlueprintFloor}
+            opacity={0.95}
           />
 
           {/* Окна на фасаде */}

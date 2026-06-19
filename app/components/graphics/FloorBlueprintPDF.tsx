@@ -16,7 +16,8 @@ const CENTER_Z = (BLDG.zMin + BLDG.zMax) / 2; //  6.490
 
 // Масштаб рендера PDF (2 = 144 DPI — хорошее соотношение качество/память)
 const PDF_SCALE = 2.5;
-// Страница 1-го этажа в техпаспорте (1-indexed)
+// Страница 1-го этажа в техпаспорте (1-indexed).
+// Стр. 18 → 1 этаж, 19 → 2 этаж, 20 → 3 этаж, 21 → 4 этаж.
 const FLOOR1_PAGE = 18;
 
 // ─────────────────────────────────────────────────────────────
@@ -94,12 +95,14 @@ async function renderPdfPage(
 //   - угловой штамп снизу-справа ~15% по высоте, ~22% по ширине
 // ─────────────────────────────────────────────────────────────
 export function FloorBlueprintPDF({
-  pdfUrl    = '/blueprint_floor1.pdf',
+  pdfUrl    = '/blueprint_floors.pdf',
+  page      = FLOOR1_PAGE,
   visible   = true,
   opacity   = 0.82,
   yOffset   = 0.04,
 }: {
   pdfUrl?:  string;
+  page?:    number;
   visible?: boolean;
   opacity?: number;
   yOffset?: number;
@@ -112,7 +115,7 @@ export function FloorBlueprintPDF({
     let cancelled = false;
 
     // Crop подобран под стандартный лист техпаспорта с угловым штампом
-    renderPdfPage(pdfUrl, FLOOR1_PAGE, PDF_SCALE, {
+    renderPdfPage(pdfUrl, page, PDF_SCALE, {
       left:   0.04,  // левое поле
       top:    0.03,  // верхнее поле
       right:  0.04,  // правое поле
@@ -126,7 +129,7 @@ export function FloorBlueprintPDF({
     return () => {
       cancelled = true;
     };
-  }, [pdfUrl, visible]);
+  }, [pdfUrl, page, visible]);
 
   useEffect(() => {
     if (!meshRef.current) return;

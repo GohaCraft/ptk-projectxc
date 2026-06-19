@@ -5,3 +5,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Десктоп-сборка (артефакты, не коммитим)
+out/
+dist-desktop/
+desktop/output/

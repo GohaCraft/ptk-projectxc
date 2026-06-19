@@ -553,7 +553,7 @@ export default function WallEditorUI({
                       className="h-2.5 w-2.5 rounded border-slate-700 bg-slate-900 text-blue-400 focus:ring-0 cursor-pointer"
                     />
                     <label htmlFor="toggle_blueprint_floor" className="text-[8.5px] text-blue-300 font-mono cursor-pointer select-none">
-                      Чертёж БТИ на полу
+                      Чертёж БТИ на полу (1-4 эт.)
                     </label>
                   </div>
                 </div>
