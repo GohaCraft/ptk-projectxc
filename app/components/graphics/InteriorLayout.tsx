@@ -143,55 +143,44 @@ export const SlicedWall = ({
         const isCurrentFloorActive = activeFloor === (f + 1);
         const outerOp = (activeFloor !== 5 && isCurrentFloorActive) ? Math.min(wallsOpacity, 0.22) : wallsOpacity;
         
-        const hasWestGap = isFirstFloor && (isCenterBlock || isRightBlock);
-        const hasEastGap = isFirstFloor && (isCenterBlock || isLeftBlock);
-        
-        const renderZWall = (wallX: number, hasGap: boolean, isWest: boolean) => {
-          if (outerOp === 0) return null;
-          
-          let gapLocalZ = -5.0;
-          let gapW = 6.0;
-          
-          if (blockType === 'B') {
-            if (isWest) {
-              gapLocalZ = 6.115;
-              gapW = 2.65;
-            } else {
-              gapLocalZ = -6.5425;
-              gapW = 2.915;
-            }
-          } else if (blockType === 'B1') {
-            gapLocalZ = -1.0;
-            gapW = 4.0;
-          } else if (blockType === 'B2') {
-            gapLocalZ = -3.4575;
-            gapW = 2.915;
-          }
+        // Проёмы (проходы во внутренний двор) в торцевых стенах 1-го этажа.
+        // {z, w} — центр и ширина проёма в локальных координатах блока.
+        const westGaps: {z: number; w: number}[] = isFirstFloor ? (
+          blockType === 'B'  ? [{ z: 6.115, w: 2.65 }] :
+          blockType === 'B2' ? [{ z: -3.4575, w: 2.915 }] : []
+        ) : [];
+        const eastGaps: {z: number; w: number}[] = isFirstFloor ? (
+          blockType === 'B1' ? [{ z: -20.55, w: 2.31 }, { z: 1.11, w: 3.13 }] :
+          blockType === 'B'  ? [{ z: 11.29, w: 1.78 }] : []
+        ) : [];
 
-          if (!hasGap || gapLocalZ < -d/2 + gapW/2 || gapLocalZ > d/2 - gapW/2) {
-             return (
-               <mesh castShadow receiveShadow position={[wallX, floorY, cz]}>
-                 <boxGeometry args={[t, floorH, d - 2*t]} />
-                 <MaterialComponent args={[t, floorH, d - 2*t]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>
-             );
+        const renderZWall = (wallX: number, gaps: {z: number; w: number}[]) => {
+          if (outerOp === 0) return null;
+
+          const zmin = -d/2 + t;
+          const zmax = d/2 - t;
+          // Вычитаем проёмы из сплошной стены -> массив сплошных сегментов
+          const sorted = gaps
+            .filter(g => g.z > zmin && g.z < zmax)
+            .sort((a, b) => a.z - b.z);
+          const segs: [number, number][] = [];
+          let cur = zmin;
+          for (const g of sorted) {
+            const gs = Math.max(zmin, g.z - g.w/2);
+            const ge = Math.min(zmax, g.z + g.w/2);
+            if (gs > cur) segs.push([cur, gs]);
+            cur = Math.max(cur, ge);
           }
-          const len1 = (gapLocalZ - gapW/2) - (-d/2 + t);
-          const z1 = -d/2 + t + len1/2;
-          
-          const len2 = (d/2 - t) - (gapLocalZ + gapW/2);
-          const z2 = gapLocalZ + gapW/2 + len2/2;
-          
+          if (cur < zmax) segs.push([cur, zmax]);
+
           return (
              <group>
-               {len1 > 0 && <mesh castShadow receiveShadow position={[wallX, floorY, cz + z1]}>
-                 <boxGeometry args={[t, floorH, len1]} />
-                 <MaterialComponent args={[t, floorH, len1]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>}
-               {len2 > 0 && <mesh castShadow receiveShadow position={[wallX, floorY, cz + z2]}>
-                 <boxGeometry args={[t, floorH, len2]} />
-                 <MaterialComponent args={[t, floorH, len2]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>}
+               {segs.map(([a, b], i) => (b - a) > 0.05 && (
+                 <mesh key={`zwall-${i}`} castShadow receiveShadow position={[wallX, floorY, cz + (a + b)/2]}>
+                   <boxGeometry args={[t, floorH, b - a]} />
+                   <MaterialComponent args={[t, floorH, b - a]} transparent={outerOp < 1.0} opacity={outerOp} />
+                 </mesh>
+               ))}
              </group>
           );
         };
@@ -299,10 +288,10 @@ export const SlicedWall = ({
              )}
              
              {/* Западная стена (-X) */}
-             {renderZWall(cx - w/2 + t/2, hasWestGap, true)}
-             
+             {renderZWall(cx - w/2 + t/2, westGaps)}
+
              {/* Восточная стена (+X) */}
-             {renderZWall(cx + w/2 - t/2, hasEastGap, false)}
+             {renderZWall(cx + w/2 - t/2, eastGaps)}
 
              {/* Перекрытие (пол этажа) */}
               <mesh castShadow receiveShadow position={[cx, baseY + f * floorH + 0.1, cz]}>
