@@ -35,7 +35,6 @@ import {
   WindowsGroup,
   SlicedRib,
   Staircase,
-  CentralLobbyStair,
   CanopyLights
 } from './ArchitecturalModules';
 
@@ -350,39 +349,6 @@ export default function Scene3D({
               onDragChange={setIsDraggingWall}
               showProceduralBlueprint={showProceduralBlueprint}
             />
-            {/* Центральный холл Лит. Б (левая/западная сторона) — маршевая лестница 1→2 этаж + дверь у основания */}
-            <FloorSlice activeFloor={activeFloor} floorIndex={0}>
-              <group>
-                <CentralLobbyStair
-                  position={[-13.8, 1.5, 6.0]}
-                  rotation={[0, Math.PI / 2, 0]}
-                  width={1.5}
-                  rise={2.9}
-                  total={16}
-                  split={3}
-                  tread={0.3}
-                />
-                {/* Дверь у основания лестницы (светлое дерево) */}
-                <group position={[-14.35, 1.5, 6.0]}>
-                  <mesh castShadow receiveShadow position={[0, 1.05, 0]}>
-                    <boxGeometry args={[0.1, 2.1, 0.95]} />
-                    <meshStandardMaterial color="#c9a36a" roughness={0.6} />
-                  </mesh>
-                  <mesh position={[0.04, 2.18, 0]}>
-                    <boxGeometry args={[0.14, 0.12, 1.12]} />
-                    <meshStandardMaterial color="#e8e3d8" roughness={0.75} />
-                  </mesh>
-                  <mesh position={[0.04, 1.05, 0.55]}>
-                    <boxGeometry args={[0.14, 2.2, 0.08]} />
-                    <meshStandardMaterial color="#e8e3d8" roughness={0.75} />
-                  </mesh>
-                  <mesh position={[0.04, 1.05, -0.55]}>
-                    <boxGeometry args={[0.14, 2.2, 0.08]} />
-                    <meshStandardMaterial color="#e8e3d8" roughness={0.75} />
-                  </mesh>
-                </group>
-              </group>
-            </FloorSlice>
             <FloorSlice activeFloor={activeFloor} floorIndex={4}>
               {/* Левая надстроечная башня Лит. Б */}
               <group>
