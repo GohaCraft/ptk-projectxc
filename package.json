@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "desktop:export": "cross-env EXPORT_MODE=true next build",
+    "desktop:export": "node scripts/desktop-export.mjs",
     "desktop:start": "electron electron-main.js",
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder --win --x64"
@@ -54,7 +54,7 @@
     "productName": "ZGU-Model-3D",
     "copyright": "Copyright © 2026 ZGU",
     "directories": {
-      "output": "dist-desktop"
+      "output": "desktop/output"
     },
     "files": [
       "electron-main.js",
@@ -63,10 +63,20 @@
     ],
     "win": {
       "target": [
-        "portable",
-        "nsis"
+        "nsis",
+        "portable"
       ],
-      "icon": "public/favicon.ico"
+      "icon": "public/favicon.ico",
+      "artifactName": "ZGU-3D-Model-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ЗГУ 3D Модель",
+      "language": "1049"
     }
   }
 }

@@ -1,0 +1,6 @@
+Сюда положи фирменную иконку приложения: icon.ico (формат .ico, 256x256).
+
+Затем в корневом package.json в блоке "build" -> "win" -> "icon"
+укажи путь: "desktop/assets/icon.ico"
+
+Сейчас по умолчанию используется public/favicon.ico.
