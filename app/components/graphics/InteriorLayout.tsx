@@ -132,6 +132,16 @@ export const SlicedWall = ({
   
   const isCenterBlock = blockType === 'B';
 
+  // Индекс активного (видимого сверху) этажа. Интерьер нижних этажей скрыт
+  // плитой перекрытия -> не рендерим его (экономия draw-call/теней).
+  const activeIdx =
+    activeFloor === 1 ? 0 :
+    activeFloor === 2 ? 1 :
+    activeFloor === 2.5 ? 2 :
+    activeFloor === 3 ? 2 :
+    activeFloor === 3.5 ? 3 :
+    activeFloor === 4 ? 3 : -1;
+
   return (
     <group>
       {[0, 1, 2, 3].map(f => {
@@ -313,21 +323,24 @@ export const SlicedWall = ({
                 </mesh>
              )}
              
-             {/* Внутренние стены для всех 4 этажей */}
-             <InteriorLayout
-                cx={cx} cz={cz} w={w} d={d}
-                floorH={floorH} floorY={floorY}
-                blockType={blockType as 'B' | 'B1' | 'B2'}
-                floorIdx={f as 0 | 1 | 2 | 3}
-                wallsOpacity={wallsOpacity}
-                customWalls={customWalls}
-                originalWalls={originalWalls}
-                selectedWallId={selectedWallId}
-                onSelectWall={onSelectWall}
-                onWallMove={onWallMove}
-                onDragChange={onDragChange}
-                isEditMode={isEditMode}
-             />
+             {/* Внутренние перегородки — только для активного (верхнего видимого) этажа.
+                 Интерьер нижних этажей скрыт плитой -> не рисуем (оптимизация FPS). */}
+             <group visible={activeIdx === f}>
+               <InteriorLayout
+                  cx={cx} cz={cz} w={w} d={d}
+                  floorH={floorH} floorY={floorY}
+                  blockType={blockType as 'B' | 'B1' | 'B2'}
+                  floorIdx={f as 0 | 1 | 2 | 3}
+                  wallsOpacity={wallsOpacity}
+                  customWalls={customWalls}
+                  originalWalls={originalWalls}
+                  selectedWallId={selectedWallId}
+                  onSelectWall={onSelectWall}
+                  onWallMove={onWallMove}
+                  onDragChange={onDragChange}
+                  isEditMode={isEditMode}
+               />
+             </group>
           </FloorSlice>
         );
       })}

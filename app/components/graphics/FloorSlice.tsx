@@ -13,6 +13,7 @@ interface Shard {
   color: THREE.Color;
   life: number;
   decaySpeed: number; // Stored locally to avoid Math.random in frame loop
+  delay: number; // staggered emission for a cascading shatter
 }
 
 export const FloorSlice: React.FC<{
@@ -87,8 +88,10 @@ export const FloorSlice: React.FC<{
         col.setRGB(cream, cream * 0.84, cream * 0.7);
       }
 
-      // Quick snappy decay: expires cleanly in ~0.22 - 0.36 seconds
-      const decaySpeed = 2.8 + Math.random() * 1.8;
+      // Softer dissolve: expires cleanly in ~0.4 - 0.7 seconds
+      const decaySpeed = 1.6 + Math.random() * 1.2;
+      // Каскад: осколки вылетают не разом, а волной (по радиусу)
+      const delay = (radiusX - 6) / 10 * 0.12 + Math.random() * 0.05;
 
       newShards.push({
         pos: new THREE.Vector3(px, py, pz),
@@ -102,7 +105,8 @@ export const FloorSlice: React.FC<{
         scale: scaleVec,
         color: col,
         life: 1.0,
-        decaySpeed
+        decaySpeed,
+        delay
       });
     }
 
@@ -137,12 +141,17 @@ export const FloorSlice: React.FC<{
 
     if (isVisible) {
       // Smoothly slide the active floor up into its slot
-      g.position.y = THREE.MathUtils.damp(g.position.y, 0, 7.5, dt);
-      g.position.x = 0;
-      g.position.z = 0;
-      g.rotation.set(0, 0, 0);
-      g.scale.set(1, 1, 1);
+      const settled = Math.abs(g.position.y) < 0.003;
+      if (!settled) {
+        g.position.y = THREE.MathUtils.damp(g.position.y, 0, 7.5, dt);
+        g.position.x = 0;
+        g.position.z = 0;
+        g.rotation.set(0, 0, 0);
+        g.scale.set(1, 1, 1);
+      }
       g.visible = true;
+      // ОПТИМИЗАЦИЯ: этаж на месте и осколков нет — кадр пропускаем целиком.
+      if (settled && !shardsRef.current.some(s => s.life > 0)) return;
     } else {
       // PERFORMANCE OPTIMIZATION: If we are not visible and all shards are dead,
       // completely de-register rendering and skip update frames!
@@ -150,7 +159,7 @@ export const FloorSlice: React.FC<{
       const isAnyShardActive = shards.some(s => s.life > 0);
       if (!isAnyShardActive) {
         g.visible = false;
-        return; 
+        return;
       }
     }
 
@@ -163,9 +172,17 @@ export const FloorSlice: React.FC<{
 
       for (let i = 0; i < SHARD_COUNT; i++) {
         const s = shards[i];
-        if (s && s.life > 0) {
+        if (s && s.delay > 0) {
+          // ещё не вылетел — держим скрытым, но кадр активен
+          s.delay -= dt;
+          dummy.position.set(0, -999, 0);
+          dummy.scale.set(0, 0, 0);
+          dummy.updateMatrix();
+          sMesh.setMatrixAt(i, dummy.matrix);
+          isAnyDebrisActive = true;
+        } else if (s && s.life > 0) {
           // Ballistics: Gravity + fast air resistance
-          s.vel.y -= 14 * dt; 
+          s.vel.y -= 14 * dt;
           s.vel.multiplyScalar(Math.pow(0.91, dt * 60)); 
           s.pos.addScaledVector(s.vel, dt);
 
