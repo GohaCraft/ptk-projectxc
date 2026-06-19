@@ -35,6 +35,7 @@ import {
   WindowsGroup,
   SlicedRib,
   Staircase,
+  CentralLobbyStair,
   CanopyLights
 } from './ArchitecturalModules';
 
@@ -349,6 +350,34 @@ export default function Scene3D({
               onDragChange={setIsDraggingWall}
               showProceduralBlueprint={showProceduralBlueprint}
             />
+            {/* Центральный холл Лит. Б (левая/западная сторона) — маршевая лестница 1→2 этаж + деревянная подшивка потолка */}
+            <FloorSlice activeFloor={activeFloor} floorIndex={0}>
+              <group>
+                <CentralLobbyStair
+                  position={[-13.26, 1.5, 5.4]}
+                  width={1.6}
+                  rise={2.9}
+                  run={4.8}
+                  steps={16}
+                  landing={1.4}
+                  railSides={['right']}
+                />
+                {/* деревянная балка-подшивка поперёк холла (бурый шпон) */}
+                <mesh castShadow receiveShadow position={[0, 4.02, 8.6]}>
+                  <boxGeometry args={[28.6, 0.58, 1.7]} />
+                  <meshStandardMaterial color="#9a6a38" roughness={0.55} metalness={0.05} />
+                </mesh>
+                {/* деревянный фриз вдоль западной и восточной стен холла */}
+                <mesh receiveShadow position={[-14.2, 3.95, 8.6]}>
+                  <boxGeometry args={[0.12, 0.85, 7.6]} />
+                  <meshStandardMaterial color="#9a6a38" roughness={0.55} />
+                </mesh>
+                <mesh receiveShadow position={[14.2, 3.95, 8.6]}>
+                  <boxGeometry args={[0.12, 0.85, 7.6]} />
+                  <meshStandardMaterial color="#9a6a38" roughness={0.55} />
+                </mesh>
+              </group>
+            </FloorSlice>
             <FloorSlice activeFloor={activeFloor} floorIndex={4}>
               {/* Левая надстроечная башня Лит. Б */}
               <group>

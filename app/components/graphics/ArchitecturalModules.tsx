@@ -548,6 +548,121 @@ export const SolidWall = ({ position, width, length, y1, y2 }: { position: [numb
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  ЦЕНТРАЛЬНЫЙ ХОЛЛ ЛИТ. Б — маршевая лестница 1→2 этаж (по фото)
+//  Прямой одномаршевый марш со сплошным (закрытым) низом, верхней
+//  площадкой и хромированным ограждением (круглые стойки + 3 трубы).
+//  Локальная система: марш поднимается вдоль +Z, вверх по +Y от 0.
+// ──────────────────────────────────────────────────────────────────
+const ChromeMat = (props: any) => (
+  <meshStandardMaterial color="#cdd2d6" metalness={0.85} roughness={0.18} {...props} />
+);
+
+const HandRail = ({ side, run, rise, postH = 0.98 }: { side: number; run: number; rise: number; postH?: number }) => {
+  const ang = Math.atan2(rise, run);
+  const L = Math.hypot(run, rise);
+  const nPost = Math.max(2, Math.round(run / 0.95));
+  const posts = [];
+  for (let k = 0; k <= nPost; k++) {
+    const t = k / nPost;
+    const z = t * run;
+    const y = t * rise;
+    posts.push(
+      <mesh key={`post-${side}-${k}`} castShadow position={[side, y + postH / 2, z]}>
+        <cylinderGeometry args={[0.024, 0.024, postH, 14]} />
+        <ChromeMat />
+      </mesh>
+    );
+  }
+  // верхний поручень + 2 промежуточные трубы (вдоль уклона)
+  const tubes = [postH - 0.03, postH * 0.64, postH * 0.30].map((h, idx) => (
+    <mesh
+      key={`tube-${side}-${idx}`}
+      position={[side, rise / 2 + h, run / 2]}
+      rotation={[Math.PI / 2 - ang, 0, 0]}
+    >
+      <cylinderGeometry args={[0.022, 0.022, L + 0.05, 14]} />
+      <ChromeMat />
+    </mesh>
+  ));
+  return <group>{posts}{tubes}</group>;
+};
+
+export const CentralLobbyStair = ({
+  position,
+  rotation = [0, 0, 0],
+  width = 1.6,
+  rise = 2.9,
+  steps = 16,
+  run = 4.8,
+  landing = 1.4,
+  railSides = ['left'],
+}: {
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  width?: number;
+  rise?: number;
+  steps?: number;
+  run?: number;
+  landing?: number;
+  railSides?: ('left' | 'right')[];
+}) => {
+  const tread = run / steps;
+  const riser = rise / steps;
+  const stepMeshes = [];
+  for (let i = 0; i < steps; i++) {
+    const top = (i + 1) * riser;
+    const z = i * tread + tread / 2;
+    // сплошная проступь от пола (закрытый низ как на фото)
+    stepMeshes.push(
+      <mesh key={`riser-${i}`} castShadow receiveShadow position={[0, top / 2, z]}>
+        <boxGeometry args={[width, top, tread]} />
+        <GreyConcreteMaterial />
+      </mesh>
+    );
+    // отделка проступи (светлая плитка)
+    stepMeshes.push(
+      <mesh key={`tread-${i}`} receiveShadow position={[0, top + 0.011, z]}>
+        <boxGeometry args={[width, 0.022, tread + 0.02]} />
+        <meshStandardMaterial color="#d9d5cd" roughness={0.7} />
+      </mesh>
+    );
+  }
+  const railX = width / 2 + 0.02;
+  return (
+    <group position={position} rotation={rotation as any}>
+      {stepMeshes}
+      {/* верхняя площадка */}
+      <mesh castShadow receiveShadow position={[0, rise - 0.11, run + landing / 2]}>
+        <boxGeometry args={[width, 0.22, landing]} />
+        <GreyConcreteMaterial />
+      </mesh>
+      <mesh receiveShadow position={[0, rise + 0.011, run + landing / 2]}>
+        <boxGeometry args={[width, 0.022, landing]} />
+        <meshStandardMaterial color="#d9d5cd" roughness={0.7} />
+      </mesh>
+      {/* ограждение по маршу */}
+      {railSides.includes('left') && <HandRail side={-railX} run={run} rise={rise} />}
+      {railSides.includes('right') && <HandRail side={railX} run={run} rise={rise} />}
+      {/* ограждение по площадке (продолжение) */}
+      {railSides.includes('left') && (
+        <group position={[-railX, rise, run]}>
+          {[0, landing].map((dz, i) => (
+            <mesh key={`lp-${i}`} castShadow position={[0, 0.49, dz]}>
+              <cylinderGeometry args={[0.024, 0.024, 0.98, 14]} />
+              <ChromeMat />
+            </mesh>
+          ))}
+          <mesh position={[0, 0.95, landing / 2]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.022, 0.022, landing, 14]} />
+            <ChromeMat />
+          </mesh>
+        </group>
+      )}
+    </group>
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────
 //  MURAL MOSAIC & HELPERS
 // ──────────────────────────────────────────────────────────────────
 export const createMuralTexture = () => {
