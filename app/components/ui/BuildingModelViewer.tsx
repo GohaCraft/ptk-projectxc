@@ -474,7 +474,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v116_photos";
+    const WALLS_VERSION = "v117_graywalls";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
