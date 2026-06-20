@@ -80,5 +80,37 @@ export const INTERACTIVE_ZONES: InteractiveZone[] = [
     beforeImg: 'https://picsum.photos/seed/z4before/800/600',
     afterImg: 'https://picsum.photos/seed/z4after/800/600',
     gallery: []
+  },
+  {
+    id: 'zone_f3_b1_top',
+    name: 'Зона — Лит. Б1 (3 этаж, север)',
+    floor: 3,
+    block: 'B1',
+    roomNumber: '26',
+    area: '—',
+    styleTitle: 'Зона (черновик)',
+    styleDesc: 'Зона размечена по чертежу 3 этажа. Фото и описание будут привязаны позже.',
+    center: [-19.57, 9.75, -10.88],
+    size: [9.39, 3.3, 3.96],
+    cameraPos: [-29.57, 14.75, -20.88],
+    beforeImg: 'https://picsum.photos/seed/z5before/800/600',
+    afterImg: 'https://picsum.photos/seed/z5after/800/600',
+    gallery: []
+  },
+  {
+    id: 'zone_f3_b2_top',
+    name: 'Зона — Лит. Б2 (3 этаж, север)',
+    floor: 3,
+    block: 'B2',
+    roomNumber: '—',
+    area: '—',
+    styleTitle: 'Зона (черновик)',
+    styleDesc: 'Зона размечена по чертежу 3 этажа. Фото и описание будут привязаны позже.',
+    center: [21.96, 9.75, -17.49],
+    size: [3.57, 3.3, 4.55],
+    cameraPos: [31.96, 14.75, -27.49],
+    beforeImg: 'https://picsum.photos/seed/z6before/800/600',
+    afterImg: 'https://picsum.photos/seed/z6after/800/600',
+    gallery: []
   }
 ];
