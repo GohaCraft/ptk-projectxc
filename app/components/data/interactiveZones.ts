@@ -64,5 +64,21 @@ export const INTERACTIVE_ZONES: InteractiveZone[] = [
     beforeImg: 'https://picsum.photos/seed/z3before/800/600',
     afterImg: 'https://picsum.photos/seed/z3after/800/600',
     gallery: []
+  },
+  {
+    id: 'zone_f2_b1_top',
+    name: 'Зона — Лит. Б1 (2 этаж, север)',
+    floor: 2,
+    block: 'B1',
+    roomNumber: '26/27',
+    area: '—',
+    styleTitle: 'Зона (черновик)',
+    styleDesc: 'Зона размечена по чертежу 2 этажа. Фото и описание будут привязаны позже.',
+    center: [-20.13, 6.45, -9.46],
+    size: [9.02, 3.3, 4.24],
+    cameraPos: [-30.13, 11.45, -19.46],
+    beforeImg: 'https://picsum.photos/seed/z4before/800/600',
+    afterImg: 'https://picsum.photos/seed/z4after/800/600',
+    gallery: []
   }
 ];
