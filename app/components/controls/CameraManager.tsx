@@ -25,8 +25,27 @@ const getFloorHeight = (floor: number) => {
   return 15.5; // Floor 6 / Roof Complete
 };
 
+// Радиус «тела» камеры для столкновений (камера = сфера этого радиуса)
+const COLLISION_RADIUS = 0.7;
+
+// Первое пересечение, у которого ВЕСЬ путь к корню видим (скрытые этажи игнорим)
+function firstVisibleHit(hits: THREE.Intersection[]): THREE.Intersection | null {
+  for (const h of hits) {
+    let o: THREE.Object3D | null = h.object;
+    let visible = true;
+    while (o) {
+      if (o.visible === false) { visible = false; break; }
+      o = o.parent;
+    }
+    // пропускаем пол/землю как препятствие по вертикали? нет — пол тоже твёрдый
+    if (visible) return h;
+  }
+  return null;
+}
+
 export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 5, cameraMode = 'orbit', selectedZone = null }: CameraManagerProps) {
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
+  const raycaster = useRef(new THREE.Raycaster());
 
   const prevActiveFloor = useRef<number>(activeFloor);
   const prevCameraMode = useRef<'orbit' | 'top' | 'flight'>(cameraMode);
@@ -300,7 +319,28 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
           const finalSpeed = keys.current.shift ? sprintSpeed : baseSpeed;
           moveDir.normalize().multiplyScalar(finalSpeed * delta);
 
-          camera.position.add(moveDir);
+          // ── Столкновения: камера не проходит сквозь стены и прочее ──────────
+          // Двигаемся по каждой оси отдельно, чтобы можно было «скользить» вдоль стены.
+          const ray = raycaster.current;
+          const axes: ('x' | 'z' | 'y')[] = ['x', 'z', 'y'];
+          for (const ax of axes) {
+            const amt = moveDir[ax];
+            if (amt === 0) continue;
+            const sign = Math.sign(amt);
+            const dir = new THREE.Vector3();
+            dir[ax] = sign;
+            ray.set(camera.position, dir);
+            ray.far = Math.abs(amt) + COLLISION_RADIUS;
+            const hits = ray.intersectObjects(scene.children, true);
+            const hit = firstVisibleHit(hits);
+            if (hit) {
+              // останавливаемся, не доезжая COLLISION_RADIUS до препятствия
+              const allowed = Math.max(0, hit.distance - COLLISION_RADIUS);
+              camera.position[ax] += sign * Math.min(Math.abs(amt), allowed);
+            } else {
+              camera.position[ax] += amt;
+            }
+          }
         }
       }
     }
