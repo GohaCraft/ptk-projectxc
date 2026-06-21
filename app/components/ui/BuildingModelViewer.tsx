@@ -139,7 +139,7 @@ export default function BuildingModelViewer() {
 
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [originalWalls, setOriginalWalls] = useState<CustomWall[]>([]);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(APP_SETTINGS.wallEditor);
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [isDraggingWall, setIsDraggingWall] = useState(false);
@@ -537,7 +537,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v125_settings";
+    const WALLS_VERSION = "v126_settings2";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -818,15 +818,15 @@ export default function BuildingModelViewer() {
           setSelectedWallId={setSelectedWallId}
           isDraggingWall={isDraggingWall}
           setIsDraggingWall={setIsDraggingWall}
-          blueprintImage={blueprintImage}
-          blueprintPdf={blueprintPdf}
+          blueprintImage={APP_SETTINGS.blueprints ? blueprintImage : null}
+          blueprintPdf={APP_SETTINGS.blueprints ? blueprintPdf : null}
           blueprintPdfPage={blueprintPdfPage}
           blueprintOpacity={blueprintOpacity}
           blueprintScale={blueprintScale}
           blueprintOffset={blueprintOffset}
           blueprintHeightOffset={blueprintHeightOffset}
-          showProceduralBlueprint={showProceduralBlueprint}
-          showBlueprintFloor={showBlueprintFloor}
+          showProceduralBlueprint={APP_SETTINGS.blueprints && showProceduralBlueprint}
+          showBlueprintFloor={APP_SETTINGS.blueprints && showBlueprintFloor}
           blueprintFloorUrl="/blueprint_floors.pdf"
           onWallMove={handleWallMoveIn3D}
           firstFrameReady={firstFrameReady}
