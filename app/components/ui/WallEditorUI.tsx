@@ -261,7 +261,7 @@ export default function WallEditorUI({
             </button>
           </div>
 
-          {/* Ракурс Камеры (Три кнопки) */}
+          {/* Ракурс Камеры (Три кнопки) — порядок: 3D Орбита → 2D → Облёт */}
           <div className="flex flex-col gap-1.5">
             <button
               id="btn_camera_orbit"
@@ -275,17 +275,6 @@ export default function WallEditorUI({
               3D Орбита
             </button>
             <button
-              id="btn_camera_flight"
-              onClick={() => setCameraMode('flight')}
-              className={`w-full text-[10px] font-mono py-1.5 rounded transition-all cursor-pointer text-center font-bold font-sans ${
-                cameraMode === 'flight'
-                  ? 'bg-slate-200 text-slate-900 border border-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800 bg-[#121319]'
-              }`}
-            >
-              Облет
-            </button>
-            <button
               id="btn_camera_top"
               onClick={() => setCameraMode('top')}
               className={`w-full text-[10px] font-mono py-1.5 rounded transition-all cursor-pointer text-center font-bold font-sans ${
@@ -294,7 +283,18 @@ export default function WallEditorUI({
                   : 'text-slate-400 hover:text-white hover:bg-slate-800 bg-[#121319]'
               }`}
             >
-              2 Модель
+              2D Сверху
+            </button>
+            <button
+              id="btn_camera_flight"
+              onClick={() => setCameraMode('flight')}
+              className={`w-full text-[10px] font-mono py-1.5 rounded transition-all cursor-pointer text-center font-bold font-sans ${
+                cameraMode === 'flight'
+                  ? 'bg-slate-200 text-slate-900 border border-white'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800 bg-[#121319]'
+              }`}
+            >
+              Облёт
             </button>
           </div>
 

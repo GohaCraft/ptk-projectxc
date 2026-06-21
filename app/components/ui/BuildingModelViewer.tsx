@@ -7,6 +7,7 @@ import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, Ref
 import { weatherState, WeatherMode } from '../data/weatherState';
 
 import WallEditorUI from './WallEditorUI';
+import FlightJoystick from './FlightJoystick';
 import StartMenu from './StartMenu';
 import { CustomLoader } from './CustomLoader';
 import WebGLBoundary from './WebGLBoundary';
@@ -516,7 +517,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v121_power";
+    const WALLS_VERSION = "v122_joystick";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -953,6 +954,9 @@ export default function BuildingModelViewer() {
           <Power size={17} className="text-slate-300 group-hover:text-red-400 transition-colors" strokeWidth={2.4} />
         </button>
       )}
+
+      {/* Экранный джойстик для режима «Облёт» (киоск без клавиатуры) */}
+      {hasStarted && !selectedZone && cameraMode === 'flight' && <FlightJoystick />}
 
       {/* Cyberpunk floor selector overlay */}
       {hasStarted && (

@@ -5,6 +5,7 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { InteractiveZone } from '../data/interactiveZones';
+import { flightControl } from '../data/flightControl';
 
 interface CameraManagerProps {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
@@ -296,9 +297,17 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
       );
 
       if (!isTyping) {
+        // ── Экранный джойстик (киоск): поворот по горизонтали ──────────────
+        // Применяем поворот до расчёта направления движения.
+        if (flightControl.active && flightControl.turnX !== 0) {
+          yaw.current -= flightControl.turnX * 1.9 * delta;
+          const euler = new THREE.Euler(pitch.current, yaw.current, 0, 'YXZ');
+          camera.quaternion.setFromEuler(euler);
+        }
+
         const forward = new THREE.Vector3();
         camera.getWorldDirection(forward);
-        
+
         const right = new THREE.Vector3();
         right.crossVectors(forward, camera.up).normalize();
 
@@ -312,11 +321,25 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
         if (keys.current.space || keys.current.e) moveDir.y += 1.0;
         if (keys.current.shift || keys.current.q) moveDir.y -= 1.0;
 
+        // Джойстик: ход вперёд/назад по горизонтали (не утыкаясь в пол/небо)
+        let analogSpeed = 0;
+        if (flightControl.active && flightControl.moveY !== 0) {
+          const horiz = new THREE.Vector3(forward.x, 0, forward.z);
+          if (horiz.lengthSq() > 0) {
+            horiz.normalize();
+            moveDir.addScaledVector(horiz, flightControl.moveY);
+            analogSpeed = Math.min(1, Math.abs(flightControl.moveY));
+          }
+        }
+
         if (moveDir.lengthSq() > 0) {
           // Precise navigation speeds
           const baseSpeed = 10;
           const sprintSpeed = 26;
-          const finalSpeed = keys.current.shift ? sprintSpeed : baseSpeed;
+          // С джойстика скорость аналоговая (чем дальше тянешь — тем быстрее)
+          const usingKeys = keys.current.w || keys.current.s || keys.current.a || keys.current.d;
+          const speedScale = (!usingKeys && analogSpeed > 0) ? analogSpeed : 1;
+          const finalSpeed = (keys.current.shift ? sprintSpeed : baseSpeed) * speedScale;
           moveDir.normalize().multiplyScalar(finalSpeed * delta);
 
           // ── Столкновения: камера не проходит сквозь стены и прочее ──────────
