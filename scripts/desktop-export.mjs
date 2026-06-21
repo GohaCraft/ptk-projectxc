@@ -24,7 +24,13 @@ try {
   }
 
   process.env.EXPORT_MODE = 'true';
-  execSync('npx next build', { stdio: 'inherit', cwd: root, env: process.env });
+  // Поднимаем лимит памяти Node, иначе на больших сценах сборка падает с OOM
+  const buildEnv = { ...process.env };
+  const extraHeap = '--max-old-space-size=4096';
+  buildEnv.NODE_OPTIONS = buildEnv.NODE_OPTIONS
+    ? `${buildEnv.NODE_OPTIONS} ${extraHeap}`
+    : extraHeap;
+  execSync('npx next build', { stdio: 'inherit', cwd: root, env: buildEnv });
   console.log('[desktop-export] Готово: статический экспорт в ./out');
 } finally {
   if (moved) {
