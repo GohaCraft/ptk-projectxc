@@ -454,18 +454,29 @@ export default function BuildingModelViewer() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|Macintosh|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
       const cores = navigator.hardwareConcurrency || 4;
-      
+
+      // Проверка GPU: встройки/софт-рендер -> ограничиваем качество (ядра != мощность GPU)
+      let weakGpu = false;
+      try {
+        const c = document.createElement('canvas');
+        const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+        const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+        const renderer = (gl && dbg) ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+        weakGpu = /Intel|Microsoft Basic|SwiftShader|llvmpipe|Mali|Adreno|PowerVR|UHD|HD Graphics/i.test(renderer);
+        console.log('[Auto-Optimization] GPU:', renderer || 'unknown', '| cores:', cores);
+      } catch {}
+
       if (isMobileDevice || cores < 4) {
         setPerfTier('low');
-        console.log("[Auto-Optimization] Low-end / Mobile device detected. Pixel ratios locked, shadows & postprocessing simplified.");
-      } else if (cores < 8) {
+        console.log("[Auto-Optimization] Low-end / Mobile -> LOW (тени выкл).");
+      } else if (weakGpu || cores < 12) {
         setPerfTier('medium');
-        console.log("[Auto-Optimization] Mid-range device detected. Balancing quality and presentation framerates.");
+        console.log("[Auto-Optimization] Mid-range / встроенный GPU -> MEDIUM (дешёвые тени, DPR 1.25).");
       } else {
         setPerfTier('high');
-        console.log("[Auto-Optimization] High-end workstation detected. Full cinematic bloom and soft microshadow configurations allowed.");
+        console.log("[Auto-Optimization] Powerful GPU -> HIGH.");
       }
     }
   }, []);
@@ -474,7 +485,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v117_graywalls";
+    const WALLS_VERSION = "v118_smartperf";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -690,10 +701,11 @@ export default function BuildingModelViewer() {
     if (!hasStarted || !autoOptimize || fps <= 0) return;
     
     setFpsHistory(prev => {
-      const next = [...prev, fps].slice(-5);
-      
-      // Если производительность падает ниже 44 кадров в секунду на протяжении 4 секунд:
-      if (next.length >= 4 && next.every(v => v < 44)) {
+      const next = [...prev, fps].slice(-6);
+
+      // Резкое снижение тира — только запасной вариант (адаптив разрешения уже сглаживает).
+      // Срабатывает при стойко низком FPS: 5 замеров подряд ниже 38.
+      if (next.length >= 5 && next.every(v => v < 38)) {
         if (perfTier === 'high') {
           setPerfTier('medium');
           triggerNotification('Авто-оптимизация: снижено до СРЕДНЕГО качества (кадры ниже 44)');

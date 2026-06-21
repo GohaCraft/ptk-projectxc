@@ -2,8 +2,8 @@
 
 import React, { useRef, Suspense, useState, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Preload, SoftShadows } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Text, Preload, SoftShadows, PerformanceMonitor } from '@react-three/drei';
 
 import { CameraManager } from '../controls/CameraManager';
 import { WeatherLayer } from './Weather';
@@ -105,6 +105,28 @@ function FpsTracker({ onFpsUpdate }: { onFpsUpdate: (fps: number) => void }) {
   return null;
 }
 
+/**
+ * ShadowThrottle — карта теней не перерисовывается каждый кадр.
+ * Сцена почти статична (солнце движется медленно), поэтому тень выглядит так же,
+ * но GPU-проход глубины теней выполняется реже -> большой прирост FPS без потери вида.
+ * Несколько кадров после монтирования обновляем каждый кадр (первая корректная тень).
+ */
+function ShadowThrottle({ every = 3 }: { every?: number }) {
+  const { gl } = useThree();
+  const f = useRef(0);
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+  }, [gl]);
+  useFrame(() => {
+    f.current++;
+    if (f.current < 8 || f.current % every === 0) {
+      gl.shadowMap.needsUpdate = true;
+    }
+  });
+  return null;
+}
+
 export interface Scene3DProps {
   activeFloor: number;
   wallsOpacity: number;
@@ -176,6 +198,11 @@ export default function Scene3D({
 }: Scene3DProps) {
   const controlsRef = useRef<any>(null);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
+
+  // Адаптивное разрешение: верхняя планка по тиру, PerformanceMonitor сам понижает/поднимает
+  const maxDpr = perfTier === 'low' ? 1 : perfTier === 'medium' ? 1.25 : 1.5;
+  const [dpr, setDpr] = useState(maxDpr);
+  useEffect(() => { setDpr(maxDpr); }, [maxDpr]);
 
   // Math for real-time laser guides and block origins
   const activeFloorIdx = useMemo(() => {
@@ -251,7 +278,7 @@ export default function Scene3D({
       <Canvas
         style={{ width: '100%', height: '100%', display: 'block' }}
         shadows={perfTier !== 'low'}
-        dpr={perfTier === 'low' ? [1, 1.15] : perfTier === 'medium' ? [1, 1.40] : [1, 1.75]}
+        dpr={dpr}
         gl={{
           antialias: true,
           powerPreference: 'high-performance',
@@ -265,14 +292,20 @@ export default function Scene3D({
           if (isEditMode && !isDraggingWall) setSelectedWallId(null);
         }}
       >
+        {/* Мягкие тени (PCSS) на medium и high — умеренное число выборок: глазом
+            не отличить от 16, но в 2–3 раза дешевле. */}
         {perfTier !== 'low' && (
-          <SoftShadows 
-            size={perfTier === 'medium' ? 14 : 26} 
-            samples={perfTier === 'medium' ? 8 : 16} 
-            focus={0.85} 
-          />
+          <SoftShadows size={perfTier === 'high' ? 18 : 12} samples={perfTier === 'high' ? 8 : 5} focus={0.9} />
         )}
+        {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
+        <PerformanceMonitor
+          flipflops={3}
+          onDecline={() => setDpr(d => Math.max(0.85, +(d - 0.15).toFixed(2)))}
+          onIncline={() => setDpr(d => Math.min(maxDpr, +(d + 0.1).toFixed(2)))}
+          onFallback={() => setDpr(0.85)}
+        />
         <Suspense fallback={null}>
+        {perfTier !== 'low' && <ShadowThrottle every={3} />}
         {onFpsUpdate && <FpsTracker onFpsUpdate={onFpsUpdate} />}
         <Lighting />
         <DynamicSun lightingMode={lightingMode} />
