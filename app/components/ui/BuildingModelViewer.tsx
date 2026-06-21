@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, RefreshCw } from 'lucide-react';
+import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, RefreshCw, Power } from 'lucide-react';
 import { weatherState, WeatherMode } from '../data/weatherState';
 
 import WallEditorUI from './WallEditorUI';
@@ -46,6 +46,30 @@ export default function BuildingModelViewer() {
   const applyWeather = (mode: WeatherMode | 'auto') => {
     setWeatherMode(mode);
     weatherState.setManual(mode === 'auto' ? null : mode);
+  };
+
+  // Кнопка «выключения» (как на пульте): возврат на начальный экран + сброс всех изменений сессии
+  const handlePowerOff = () => {
+    // Сброс вида и режимов
+    setHasStarted(false);
+    setSelectedZone(null);
+    setCameraMode('orbit');
+    setActiveFloor(6);
+    setIsAnimating(false);
+    // Погода обратно на авто
+    applyWeather('auto');
+    // Выходим из редактора и сбрасываем несохранённые правки стен к исходным
+    setIsEditMode(false);
+    setIsEditorCollapsed(false);
+    setSelectedWallId(null);
+    setIsDraggingWall(false);
+    setEditorMessage(null);
+    setIsResetConfirming(false);
+    setCustomWalls(originalWalls);
+    // Сброс аудита точности
+    setAuditState('idle');
+    setAuditProgress(0);
+    setAuditLogs([]);
   };
 
   useEffect(() => {
@@ -492,7 +516,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v120_collision";
+    const WALLS_VERSION = "v121_power";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -742,7 +766,7 @@ export default function BuildingModelViewer() {
       {!isOnline && (
         <div 
           id="offline_status_indicator"
-          className="absolute left-4 md:left-6 top-[15px] pointer-events-auto z-50 bg-amber-950/92 border border-amber-800/80 backdrop-blur-xl px-3 py-1.5 rounded-xl shadow-2xl flex items-center gap-2 text-slate-200 animate-pulse font-mono text-[9px] select-none"
+          className="absolute left-20 md:left-[88px] top-[19px] pointer-events-auto z-50 bg-amber-950/92 border border-amber-800/80 backdrop-blur-xl px-3 py-1.5 rounded-xl shadow-2xl flex items-center gap-2 text-slate-200 animate-pulse font-mono text-[9px] select-none"
         >
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -917,6 +941,18 @@ export default function BuildingModelViewer() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Кнопка выключения (возврат на начальный экран + сброс изменений) */}
+      {hasStarted && !selectedZone && (
+        <button
+          id="btn_power_off"
+          onClick={handlePowerOff}
+          title="Выключить — вернуться в начальное меню и сбросить изменения"
+          className="group absolute left-4 md:left-6 top-4 md:top-6 z-30 pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center bg-[#0c0d12]/92 backdrop-blur-3xl border border-slate-800/80 shadow-2xl text-slate-300 hover:text-white hover:border-red-500/70 hover:bg-red-950/40 transition-all duration-300 cursor-pointer animate-fade-in"
+        >
+          <Power size={17} className="text-slate-300 group-hover:text-red-400 transition-colors" strokeWidth={2.4} />
+        </button>
+      )}
 
       {/* Cyberpunk floor selector overlay */}
       {hasStarted && (
