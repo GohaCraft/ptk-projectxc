@@ -8,101 +8,146 @@ import SunCalc from "suncalc";
 import { weatherState } from "../data/weatherState";
 
 /* ------------------------------------------------------------------
-   OvercastDome – A soft dome that fades in with increased cloudCover
-   to simulate realistic overcast weather instead of constant blue sky.
-   Uses a custom high-performance gradient shader with atmospheric
-   value noise to mimic real-life cloudy/misty northern skies.
+   SkyClouds – реалистичный и ОЧЕНЬ дешёвый слой облаков.
+   Вместо сотен теневых сфер — один купол с фрактальным шумом (FBM),
+   нарисованным в фрагментном шейдере. Покрытие неба задаётся реальным
+   cloud_cover (%), облака дрейфуют по реальному ветру, тонируются днём/
+   ночью и подсвечиваются со стороны солнца. Одна mesh, без отбрасывания
+   теней — идеально для слабого киоска (Core i3 / 4 ГБ).
    ------------------------------------------------------------------ */
-function OvercastDome({ cloudCover, isNight }: { cloudCover: number; isNight: boolean }) {
-  const domeRef = useRef<THREE.Mesh>(null);
-  
-  // Fades in from 10% cloud cover to 75% cloud cover
-  const factor = Math.min(1.0, Math.max(0.0, (cloudCover - 10) / 65));
-
-  // Initialize shader uniforms WITHOUT isNight as a dependency.
-  // This is CRITICAL: re-creating uniforms resets uOpacity immediately to 0.0,
-  // which causes the entire sky to flash transparently for 1 frame.
-  const uniforms = useMemo(() => {
-    return {
-      uColorHorizon: { value: new THREE.Color(isNight ? "#060912" : "#d8e2ed") }, 
-      uColorZenith: { value: new THREE.Color(isNight ? "#020306" : "#6c7a8d") },  
-      uOpacity: { value: 0.0 },
-      uTime: { value: 0.0 }
-    };
+function SkyClouds({
+  cloudCover,
+  isNight,
+  windDir,
+  windSpeed,
+  sunDirRef,
+}: {
+  cloudCover: number;
+  isNight: boolean;
+  windDir: number;
+  windSpeed: number;
+  sunDirRef: React.MutableRefObject<THREE.Vector3>;
+}) {
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uCoverage: { value: Math.min(1, Math.max(0, cloudCover / 100)) },
+      uWind: { value: new THREE.Vector2(0, 0) },
+      uNight: { value: isNight ? 1 : 0 },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uColorDay: { value: new THREE.Color("#f4f7fb") },   // светлая перламутровая облачность
+      uColorShadow: { value: new THREE.Color("#8b98a8") }, // плотная свинцово-серая тень
+      uColorNight: { value: new THREE.Color("#10151f") },  // ночная облачность
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Static memory allocation
+    []
+  );
 
   useFrame((state, delta) => {
-    if (!domeRef.current) return;
-    
-    // Smoothly transition colors between day & night modes, preventing sudden jumps
-    const targetHorizon = new THREE.Color(isNight ? "#04060b" : "#ccd6e2");
-    const targetZenith = new THREE.Color(isNight ? "#010203" : "#5d6d82");
-    const clampedDelta = Math.min(0.1, delta);
-    
-    uniforms.uColorHorizon.value.lerp(targetHorizon, clampedDelta * 2.5);
-    uniforms.uColorZenith.value.lerp(targetZenith, clampedDelta * 2.5);
-    uniforms.uOpacity.value = THREE.MathUtils.lerp(uniforms.uOpacity.value, factor * 0.98, clampedDelta * 2.5);
+    const cd = Math.min(0.1, delta);
     uniforms.uTime.value = state.clock.getElapsedTime();
+
+    const targetCov = Math.min(1, Math.max(0, cloudCover / 100));
+    uniforms.uCoverage.value = THREE.MathUtils.lerp(uniforms.uCoverage.value, targetCov, cd * 1.8);
+    uniforms.uNight.value = THREE.MathUtils.lerp(uniforms.uNight.value, isNight ? 1 : 0, cd * 1.8);
+
+    // дрейф по реальному направлению/скорости ветра (медленный, кинематографичный)
+    const angle = (windDir * Math.PI) / 180;
+    const sp = Math.max(0.6, windSpeed) * 0.0011;
+    uniforms.uWind.value.set(-Math.sin(angle) * sp, Math.cos(angle) * sp);
+
+    if (sunDirRef?.current) {
+      uniforms.uSunDir.value.copy(sunDirRef.current).normalize();
+    }
   });
 
-  // Custom high-performance atmospheric gradient shader (memoized forever)
-  const shader = useMemo(() => {
-    return {
+  const shader = useMemo(
+    () => ({
       vertexShader: `
         varying vec3 vWorldPosition;
         void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = wp.xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
-        uniform vec3 uColorHorizon;
-        uniform vec3 uColorZenith;
-        uniform float uOpacity;
         uniform float uTime;
+        uniform float uCoverage;
+        uniform vec2  uWind;
+        uniform float uNight;
+        uniform vec3  uSunDir;
+        uniform vec3  uColorDay;
+        uniform vec3  uColorShadow;
+        uniform vec3  uColorNight;
         varying vec3 vWorldPosition;
 
-        // Fast pseudo-random hash
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-        }
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 
-        // 2D Value Noise for natural atmospheric drifting clouds/mist
-        float noise(vec2 p) {
+        float noise(vec2 p){
           vec2 i = floor(p);
           vec2 f = fract(p);
           vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+          return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+                     mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
         }
 
-        void main() {
-          // Calculate sky direction
+        // 4 октавы FBM — естественная кучево-слоистая структура
+        float fbm(vec2 p){
+          float v = 0.0;
+          float a = 0.5;
+          mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+          for (int i = 0; i < 4; i++){
+            v += a * noise(p);
+            p = m * p;
+            a *= 0.5;
+          }
+          return v;
+        }
+
+        void main(){
           vec3 dir = normalize(vWorldPosition);
-          float h = max(0.0, dir.y);
+          float h = dir.y;
 
-          // Advanced atmospheric extinction curve: blends horizon to zenith naturally
-          float gradFactor = pow(h, 0.55);
-          vec3 baseColor = mix(uColorHorizon, uColorZenith, gradFactor);
+          // плавно гасим у горизонта, нижнюю полусферу отбрасываем
+          float horizonFade = smoothstep(0.015, 0.32, h);
+          if (horizonFade <= 0.001) discard;
 
-          // Subtle procedural cloud noise for sky texture depth
-          vec2 noiseUV = dir.xz * 3.8 + vec2(uTime * 0.003, uTime * 0.0015);
-          float cloudNoise = noise(noiseUV) * 0.12 + noise(noiseUV * 2.2) * 0.06;
-          
-          // Blend noise smoothly with the base gradient
-          vec3 finalColor = baseColor + vec3(cloudNoise * 0.05);
+          // проекция полусферы на «плоскость облаков» на высоте
+          vec2 p = dir.xz / (h + 0.16);
+          p *= 1.15;
+          p += uWind * uTime;
 
-          gl_FragColor = vec4(finalColor, uOpacity);
+          float base   = fbm(p);
+          float detail = noise(p * 3.1 + 11.0);
+          float field  = base * 0.78 + detail * 0.22;
+
+          // порог покрытия: больше cloud_cover -> ниже порог -> больше облаков
+          float thr  = mix(1.05, 0.16, uCoverage);
+          float edge = 0.16;
+          float cloud = smoothstep(thr - edge, thr + edge, field) * horizonFade;
+
+          // объём: плотные участки темнее снизу, края светлые
+          float shade = smoothstep(0.25, 0.95, detail);
+          vec3 dayColor = mix(uColorDay, uColorShadow, shade * (0.30 + uCoverage * 0.55));
+
+          // подсветка со стороны солнца
+          float sun = max(0.0, dot(dir, normalize(uSunDir)));
+          dayColor += vec3(0.14, 0.13, 0.11) * pow(sun, 6.0) * (1.0 - uCoverage * 0.5);
+
+          vec3 color = mix(dayColor, uColorNight, uNight);
+          float alpha = cloud * mix(0.94, 0.72, uNight);
+
+          gl_FragColor = vec4(color, alpha);
         }
-      `
-    };
-  }, []);
+      `,
+    }),
+    []
+  );
 
   return (
-    <mesh ref={domeRef}>
-      <sphereGeometry args={[440, 32, 16]} />
+    <mesh renderOrder={1}>
+      <sphereGeometry args={[450, 48, 24]} />
       <shaderMaterial
         vertexShader={shader.vertexShader}
         fragmentShader={shader.fragmentShader}
@@ -115,155 +160,6 @@ function OvercastDome({ cloudCover, isNight }: { cloudCover: number; isNight: bo
   );
 }
 
-// Statically generate 25 cloud presets so they NEVER get reset or randomized again when unmounted.
-// This completely stops clouds from suddenly jumping/flashing positions when cloudCover updates.
-const STATIC_CLOUD_PRESETS = Array.from({ length: 25 }).map((_, id) => {
-  // Pure deterministic distribution
-  const angle = (id / 25) * Math.PI * 2;
-  const radius = 100 + (id * 17) % 220;
-  const x = Math.cos(angle) * radius;
-  const z = Math.sin(angle) * radius;
-  const y = 92 + (id * 7) % 36; // floating height
-  const speedFactor = 0.35 + ((id * 3) % 7) * 0.09;
-  
-  // Deterministic sub-spheres for fluffy cloud profile
-  const subSpheresCount = 6 + (id % 4);
-  const parts = Array.from({ length: subSpheresCount }).map((_, sId) => {
-    // Generate predictable fluffy offsets
-    const seedX = Math.sin(id * 12 + sId * 45) * 11;
-    const seedY = Math.cos(id * 7 + sId * 33) * 4;
-    const seedZ = Math.sin(id * 19 + sId * 82) * 11;
-    
-    const scaleX = 14 + ((sId * 7) % 15);
-    const scaleY = 9 + ((sId * 3) % 9);
-    const scaleZ = 14 + ((sId * 5) % 15);
-
-    return {
-      offset: [seedX, seedY, seedZ] as [number, number, number],
-      scale: [scaleX, scaleY, scaleZ] as [number, number, number]
-    };
-  });
-
-  return { id, x, y, z, parts, speedFactor };
-});
-
-/* ------------------------------------------------------------------
-   VolumetricClouds – Highly realistic, drifting, fluffy, beautifully shaded,
-   multi-part procedural clouds that scale and darken with increased cloudCover.
-   Designed for the unique polar atmosphere of Norilsk (cool pearl tones).
-   ------------------------------------------------------------------ */
-function VolumetricClouds({ 
-  cloudCover, 
-  windSpeed, 
-  windDir, 
-  isNight 
-}: { 
-  cloudCover: number; 
-  windSpeed: number; 
-  windDir: number; 
-  isNight: boolean; 
- }) {
-  const cloudRefs = useRef<{ [key: number]: THREE.Group | null }>({});
-  
-  // Overall visibility scaling
-  const activeFraction = Math.min(1.0, cloudCover / 100);
-
-  // Maintain runtime drift offsets separately to prevent resetting positions on state changes
-  const positionsOffset = useRef<{ [key: number]: { x: number, z: number } }>({});
-  useEffect(() => {
-    STATIC_CLOUD_PRESETS.forEach((preset) => {
-      if (!positionsOffset.current[preset.id]) {
-        positionsOffset.current[preset.id] = { x: preset.x, z: preset.z }; // Use static coordinates
-      }
-    });
-  }, []);
-
-  useFrame((state, delta) => {
-    const angle = (windDir * Math.PI) / 180;
-    // Base speed scaled elegantly in world units
-    const baseSpeed = Math.max(1.8, windSpeed) * 0.22;
-    const clampedDelta = Math.min(0.1, delta);
-    const dx = -Math.sin(angle) * baseSpeed * clampedDelta;
-    const dz = Math.cos(angle) * baseSpeed * clampedDelta;
-
-    // High quality physical lighting coloring for realistic scattering
-    // Dynamic transition target: pearl-frost white in daylight, slate gray on overcast, midnight slate at night
-    const targetCloudColor = isNight
-      ? new THREE.Color("#111823")
-      : new THREE.Color().lerpColors(
-          new THREE.Color("#fbfcfd"), // bright pearl/frost white
-          new THREE.Color("#5a6878"), // dense lead/slate grey
-          activeFraction * 0.8
-        );
-
-    STATIC_CLOUD_PRESETS.forEach((preset) => {
-      const ref = cloudRefs.current[preset.id];
-      if (ref) {
-        // Init state fallback coordinates
-        if (!positionsOffset.current[preset.id]) {
-          positionsOffset.current[preset.id] = { x: preset.x, z: preset.z };
-        }
-
-        // Drift the cloud coordinate map
-        positionsOffset.current[preset.id].x += dx * preset.speedFactor;
-        positionsOffset.current[preset.id].z += dz * preset.speedFactor;
-
-        // Wrap coordinate limits infinitely
-        const maxLimit = 360;
-        if (positionsOffset.current[preset.id].x > maxLimit) positionsOffset.current[preset.id].x = -maxLimit;
-        if (positionsOffset.current[preset.id].x < -maxLimit) positionsOffset.current[preset.id].x = maxLimit;
-        if (positionsOffset.current[preset.id].z > maxLimit) positionsOffset.current[preset.id].z = -maxLimit;
-        if (positionsOffset.current[preset.id].z < -maxLimit) positionsOffset.current[preset.id].z = maxLimit;
-
-        // Apply updated positions and gentle breathing vertical float
-        ref.position.x = positionsOffset.current[preset.id].x;
-        ref.position.z = positionsOffset.current[preset.id].z;
-        ref.position.y = preset.y + Math.sin(state.clock.elapsedTime * 0.035 + preset.id) * 3.0;
-
-        // Dynamic visual fade and color transitions on child meshes
-        ref.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            const mat = child.material as THREE.MeshStandardMaterial;
-            if (mat) {
-              const maxOpacity = isNight ? 0.38 : 0.72;
-              const targetOpacity = activeFraction > 0.05 ? maxOpacity * activeFraction : 0.01;
-              
-              mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, clampedDelta * 2.2);
-              mat.color.lerp(targetCloudColor, clampedDelta * 2.2);
-            }
-          }
-        });
-      }
-    });
-  });
-
-  // Render presets. Avoid hard-unmounting which resets state, use 3D layer visibility check
-  return (
-    <group visible={activeFraction > 0.05}>
-      {STATIC_CLOUD_PRESETS.map((preset) => (
-        <group
-          key={preset.id}
-          ref={(el) => { cloudRefs.current[preset.id] = el; }}
-          position={[preset.x, preset.y, preset.z]}
-        >
-          {preset.parts.map((p, pIdx) => (
-            <mesh key={pIdx} position={p.offset} scale={p.scale} castShadow receiveShadow={false}>
-              <sphereGeometry args={[1, 16, 16]} />
-              <meshStandardMaterial
-                color={isNight ? "#111823" : "#fbfcfd"}
-                roughness={0.92}
-                metalness={0.03}
-                transparent
-                opacity={0} // Smoothly updated in useFrame
-                depthWrite={false}
-              />
-            </mesh>
-          ))}
-        </group>
-      ))}
-    </group>
-  );
-}
 
 /* ------------------------------------------------------------------
    DynamicSun – updates sun position, sky colour, ambient light,
@@ -556,13 +452,12 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
       />
 
       {/* Atmospheric Overcast Overlay & Procedural Volumetric Clouds */}
-      <OvercastDome cloudCover={data.cloudCover} isNight={data.isNight} />
-      
-      <VolumetricClouds 
-        cloudCover={data.cloudCover} 
-        windSpeed={data.windSpeed} 
-        windDir={data.windDir} 
-        isNight={data.isNight} 
+      <SkyClouds
+        cloudCover={data.cloudCover}
+        isNight={data.isNight}
+        windDir={data.windDir}
+        windSpeed={data.windSpeed}
+        sunDirRef={currentSkyPosRef}
       />
 
       {/* Gentle Constellation field on night atmospheres */}
