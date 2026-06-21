@@ -305,22 +305,30 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
       }
     }
 
-    // Prevent camera and target from going below the ground surface (y >= 0.6 for camera, y >= 0.1 for target)
-    let groundLimitTriggered = false;
-    if (camera.position.y < 0.6) {
-      camera.position.y = 0.6;
-      groundLimitTriggered = true;
-    }
-    if (cameraMode !== 'flight') {
-      if (controls) {
-        if (controls.target.y < 0.1) {
-          controls.target.y = 0.1;
-          groundLimitTriggered = true;
-        }
-        if (groundLimitTriggered) {
-          controls.update();
-        }
+    // ── Ограничения камеры: не под пол и не за края карты ────────────────
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    let limitTriggered = false;
+
+    // Вертикаль: над землёй, не выше потолка сцены
+    if (camera.position.y < 0.6) { camera.position.y = 0.6; limitTriggered = true; }
+    if (camera.position.y > 170) { camera.position.y = 170; limitTriggered = true; }
+
+    // Горизонталь: рамка карты (здание + запас) — дальше не улететь
+    const CX = 85, CZ = 85;
+    const nx = clamp(camera.position.x, -CX, CX);
+    const nz = clamp(camera.position.z, -CZ, CZ);
+    if (nx !== camera.position.x || nz !== camera.position.z) { camera.position.x = nx; camera.position.z = nz; limitTriggered = true; }
+
+    if (cameraMode !== 'flight' && controls) {
+      // Точка обзора держится в пределах карты
+      const tx = clamp(controls.target.x, -52, 52);
+      const tz = clamp(controls.target.z, -60, 62);
+      const ty = Math.max(0.1, controls.target.y);
+      if (tx !== controls.target.x || tz !== controls.target.z || ty !== controls.target.y) {
+        controls.target.set(tx, ty, tz);
+        limitTriggered = true;
       }
+      if (limitTriggered) controls.update();
     }
   });
 

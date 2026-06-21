@@ -280,6 +280,7 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
     cloudCover: number;   // 0‑100
     rain: number;         // 0‑5
     snow: number;         // 0‑5
+    storm: number;        // 0‑1 (гроза)
     windSpeed: number;    // m/s
     windDir: number;      // degrees
     isReady: boolean;
@@ -289,6 +290,7 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
     cloudCover: 50,
     rain: 0,
     snow: 0,
+    storm: 0,
     windSpeed: 0,
     windDir: 0,
     isReady: false,
@@ -312,6 +314,7 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
     let currentCloudCover = 50;
     let currentRain = 0;
     let currentSnow = 0;
+    let currentStorm = 0;
     let currentWindSpeed = 3.5;
     let currentWindDir = 180;
 
@@ -334,13 +337,20 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
           if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
             currentSnow = (code === 75 || code === 86) ? 5 : (code === 71) ? 1 : 2;
           }
+          // гроза (WMO 95-99) -> молнии + сильный дождь
+          if (code >= 95 && code <= 99) {
+            currentStorm = 1;
+            currentRain = Math.max(currentRain, 5);
+            currentCloudCover = 100;
+          }
         }
-        if (isMounted) {
+        if (isMounted && !weatherState.manual) {
           setData((prev) => ({
             ...prev,
             cloudCover: currentCloudCover,
             rain: currentRain,
             snow: currentSnow,
+            storm: currentStorm,
             windSpeed: currentWindSpeed,
             windDir: currentWindDir,
           }));
@@ -360,8 +370,23 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
 
   // Sync state for global usage (Weather controllers, Architectural materials, etc.)
   useEffect(() => {
-    weatherState.setState({ isNight: data.isNight, rain: data.rain, snow: data.snow });
-  }, [data.isNight, data.rain, data.snow]);
+    weatherState.setState({ isNight: data.isNight, rain: data.rain, snow: data.snow, storm: data.storm, cloudCover: data.cloudCover });
+  }, [data.isNight, data.rain, data.snow, data.storm, data.cloudCover]);
+
+  // Ручной режим погоды: когда пользователь выбрал погоду вручную — сразу применяем
+  // её к облакам/солнцу (cloudCover) и осадкам.
+  useEffect(() => {
+    const unsub = weatherState.subscribe((s) => {
+      if (s.manual) {
+        setData((prev) => (
+          prev.cloudCover === s.cloudCover && prev.rain === s.rain && prev.snow === s.snow && prev.storm === s.storm
+            ? prev
+            : { ...prev, cloudCover: s.cloudCover, rain: s.rain, snow: s.snow, storm: s.storm }
+        ));
+      }
+    });
+    return () => { unsub(); };
+  }, []);
 
   // 2. Compute Target Sun vectors and colors based on selected mood
   useEffect(() => {

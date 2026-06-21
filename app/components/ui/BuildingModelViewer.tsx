@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, Cloud, Wind, Sun, Moon, Compass } from 'lucide-react';
+import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, RefreshCw } from 'lucide-react';
+import { weatherState, WeatherMode } from '../data/weatherState';
 
 import WallEditorUI from './WallEditorUI';
 import StartMenu from './StartMenu';
@@ -39,7 +40,13 @@ export default function BuildingModelViewer() {
   const [fpsHistory, setFpsHistory] = useState<number[]>([]);
   const [optimizationNotice, setOptimizationNotice] = useState<string | null>(null);
   const [weatherData, setWeatherData] = useState<any>(null);
+  const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>('auto');
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  const applyWeather = (mode: WeatherMode | 'auto') => {
+    setWeatherMode(mode);
+    weatherState.setManual(mode === 'auto' ? null : mode);
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -485,7 +492,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v118_smartperf";
+    const WALLS_VERSION = "v119_weather";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -798,6 +805,32 @@ export default function BuildingModelViewer() {
 
       {/* Custom loading overlay */}
       <CustomLoader hasStarted={hasStarted} firstFrameReady={firstFrameReady} />
+
+      {/* Погодный переключатель */}
+      {hasStarted && !selectedZone && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-1 bg-black/45 backdrop-blur-md rounded-xl p-1 border border-white/10">
+          {([
+            { m: 'auto',   Icon: RefreshCw, t: 'Авто' },
+            { m: 'clear',  Icon: Sun,       t: 'Ясно' },
+            { m: 'cloudy', Icon: Cloud,     t: 'Облачно' },
+            { m: 'rain',   Icon: CloudRain, t: 'Дождь' },
+            { m: 'snow',   Icon: CloudSnow, t: 'Снег' },
+            { m: 'storm',  Icon: Zap,       t: 'Гроза' },
+          ] as const).map(({ m, Icon, t }) => (
+            <button
+              key={m}
+              onClick={() => applyWeather(m as WeatherMode | 'auto')}
+              title={t}
+              className={`flex flex-col items-center justify-center px-2.5 py-1.5 rounded-lg transition-colors ${
+                weatherMode === m ? 'bg-sky-500/80 text-white' : 'text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              <Icon size={16} />
+              <span className="text-[9px] mt-0.5 leading-none">{t}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Presentation view for designer concept spaces */}
       <AnimatePresence mode="wait">

@@ -565,11 +565,65 @@ export const WeatherParticleSystem = ({ rain, snow, windSpeed, windDir }: { rain
   );
 };
 
+/* --------------------------------------------------------------
+   ⚡ Lightning — гроза: редкие вспышки (засвет всей сцены) + короткий разряд.
+   Дёшево: один источник света активен только во время грозы.
+----------------------------------------------------------------*/
+const Lightning = ({ active }: { active: boolean }) => {
+  const lightRef = useRef<THREE.PointLight>(null);
+  const boltRef = useRef<THREE.Mesh>(null);
+  const flash = useRef(0);
+  const timer = useRef(0);
+  const nextAt = useRef(2.5);
+  const pos = useRef<[number, number, number]>([0, 90, 0]);
+
+  useFrame((_, delta) => {
+    const L = lightRef.current;
+    const B = boltRef.current;
+    if (!active) {
+      if (L) L.intensity = 0;
+      if (B) B.visible = false;
+      return;
+    }
+    timer.current += delta;
+    if (flash.current > 0) {
+      // затухание вспышки с лёгким мерцанием
+      flash.current = Math.max(0, flash.current - delta * 5.5);
+      const flick = 0.45 + Math.random() * 0.55;
+      if (L) L.intensity = flash.current * flick * 9;
+      if (B) B.visible = flash.current > 0.55;
+    } else if (timer.current >= nextAt.current) {
+      // новый разряд
+      flash.current = 1;
+      timer.current = 0;
+      nextAt.current = 3 + Math.random() * 7; // следующий через 3–10 с
+      const x = (Math.random() - 0.5) * 70;
+      const z = (Math.random() - 0.5) * 70;
+      pos.current = [x, 90, z];
+      if (L) L.position.set(x, 90, z);
+      if (B) B.position.set(x, 45, z);
+    } else if (L) {
+      L.intensity = 0;
+      if (B) B.visible = false;
+    }
+  });
+
+  return (
+    <>
+      <pointLight ref={lightRef} position={pos.current} color="#dce8ff" intensity={0} distance={500} decay={0.25} />
+      <mesh ref={boltRef} position={[0, 45, 0]} visible={false}>
+        <cylinderGeometry args={[0.15, 0.4, 90, 5]} />
+        <meshBasicMaterial color="#eaf2ff" toneMapped={false} />
+      </mesh>
+    </>
+  );
+};
+
 export const WeatherLayer = ({ tex }: { tex: any }) => {
-  const [weather, setWeather] = useState({ rain: weatherState.rain, snow: weatherState.snow });
+  const [weather, setWeather] = useState({ rain: weatherState.rain, snow: weatherState.snow, storm: weatherState.storm });
   useEffect(() => {
     const unsubscribe = weatherState.subscribe((state) => {
-      setWeather({ rain: state.rain, snow: state.snow });
+      setWeather({ rain: state.rain, snow: state.snow, storm: state.storm });
     });
     return () => { unsubscribe(); };
   }, []);
@@ -577,6 +631,7 @@ export const WeatherLayer = ({ tex }: { tex: any }) => {
   return (
     <>
       <WeatherEffects rainIntensity={weather.rain} snowIntensity={weather.snow} />
+      <Lightning active={weather.storm > 0} />
     </>
   );
 };
