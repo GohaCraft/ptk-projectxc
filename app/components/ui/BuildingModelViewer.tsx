@@ -968,7 +968,7 @@ export default function BuildingModelViewer() {
           <div className="bg-[#0c0d12]/92 backdrop-blur-3xl p-2.5 rounded-2xl border border-slate-800/80 shadow-2xl text-slate-200 flex flex-col items-center gap-2">
             <div className="flex flex-col items-center border-b border-slate-800/40 pb-2 mb-1">
               <Layers size={13} className="text-slate-400 mb-1" />
-              <span className="font-mono text-[7px] text-slate-350 tracking-[0.1em] uppercase font-bold text-center">ЭТАЖ</span>
+              <span className="font-mono text-[7px] text-slate-400 tracking-[0.1em] uppercase font-bold text-center">ЭТАЖ</span>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -999,7 +999,7 @@ export default function BuildingModelViewer() {
                             : 'bg-white border-white text-slate-950 font-bold scale-105 shadow-[0_4px_12px_rgba(255,255,255,0.15)]')
                         : (isAnimating 
                             ? 'opacity-40 pointer-events-none' 
-                            : 'bg-[#121319]/80 border-slate-850 text-slate-200 hover:text-white hover:border-slate-500 hover:bg-slate-800 shadow-sm font-semibold')
+                            : 'bg-[#121319]/80 border-slate-700/70 text-slate-200 hover:text-white hover:border-slate-500 hover:bg-slate-800 shadow-sm font-semibold')
                     }`}
                   >
                     <span className="text-xs font-mono tracking-tight">
