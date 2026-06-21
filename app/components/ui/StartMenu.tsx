@@ -1,11 +1,21 @@
 "use client";
 
-import React from 'react';
-import { motion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, Lock } from 'lucide-react';
 import { APP_VERSION } from '../data/changelog';
 
-export default function StartMenu({ onStart }: { onStart: () => void }) {
+export default function StartMenu({ onStart, locked = false }: { onStart: () => void; locked?: boolean }) {
+  const [showLocked, setShowLocked] = useState(false);
+
+  const handleClick = () => {
+    if (locked) {
+      setShowLocked(true);
+      return;
+    }
+    onStart();
+  };
+
   return (
     <div className="flex flex-col items-center justify-center w-full h-full relative overflow-hidden bg-[#05060a] text-[#f1f5f9]">
       {/* ── Фон: северное сияние (полярная тема Норильска) ───────────────── */}
@@ -110,7 +120,7 @@ export default function StartMenu({ onStart }: { onStart: () => void }) {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           transition={{ duration: 0.3, delay: 0.4 }}
-          onClick={onStart}
+          onClick={handleClick}
           className="group relative flex items-center justify-center gap-3 pl-7 pr-6 py-3.5 rounded-xl overflow-hidden cursor-pointer
                      border border-sky-400/30 bg-gradient-to-r from-sky-500/15 to-cyan-500/10
                      text-slate-100 hover:text-white hover:border-sky-300/60 transition-all
@@ -120,10 +130,25 @@ export default function StartMenu({ onStart }: { onStart: () => void }) {
           <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700
                            bg-gradient-to-r from-transparent via-white/15 to-transparent" />
           <span className="relative text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
-            Войти в пространство
+            Просмотр 3D модели
           </span>
           <ArrowRight className="relative w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
         </motion.button>
+
+        {/* Сообщение о блокировке модели администратором */}
+        <AnimatePresence>
+          {showLocked && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="mt-5 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-rose-500/40 bg-rose-950/30 backdrop-blur-sm text-rose-200"
+            >
+              <Lock size={15} className="text-rose-300 shrink-0" />
+              <span className="text-[12px] font-medium tracking-wide">Модель заблокирована администратором</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* нижняя строка статуса */}

@@ -72,6 +72,7 @@ import {
   clampWallToBuilding
 } from './CustomWalls';
 import { InteractiveZone, INTERACTIVE_ZONES } from '../data/interactiveZones';
+import { APP_SETTINGS } from '../../config/appSettings';
 
 // Export types and functions for external compatibility (e.g. BuildingModelViewer)
 export type { CustomWall, InteractiveZone };
@@ -277,7 +278,7 @@ export default function Scene3D({
     <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="3d-scene-container">
       <Canvas
         style={{ width: '100%', height: '100%', display: 'block' }}
-        shadows={perfTier !== 'low'}
+        shadows={APP_SETTINGS.shadows && perfTier !== 'low'}
         dpr={dpr}
         gl={{
           antialias: true,
@@ -294,7 +295,7 @@ export default function Scene3D({
       >
         {/* Мягкие тени (PCSS) на medium и high — умеренное число выборок: глазом
             не отличить от 16, но в 2–3 раза дешевле. */}
-        {perfTier !== 'low' && (
+        {APP_SETTINGS.shadows && perfTier !== 'low' && (
           <SoftShadows size={perfTier === 'high' ? 18 : 12} samples={perfTier === 'high' ? 8 : 5} focus={0.9} />
         )}
         {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
@@ -1016,7 +1017,7 @@ export default function Scene3D({
 
 
           {/* Интерактивные зоны интерьера во внутреннем пространстве */}
-          {INTERACTIVE_ZONES.map((zone) => {
+          {APP_SETTINGS.zonesEnabled && INTERACTIVE_ZONES.map((zone) => {
             const isZoneOnActiveFloor = activeFloor === 5 || activeFloor === zone.floor;
             if (!isZoneOnActiveFloor) return null;
 

@@ -10,8 +10,11 @@ import WallEditorUI from './WallEditorUI';
 import FlightJoystick from './FlightJoystick';
 import VersionInfo from './VersionInfo';
 import StartMenu from './StartMenu';
+import ErrorOverlay from './ErrorOverlay';
 import { CustomLoader } from './CustomLoader';
 import WebGLBoundary from './WebGLBoundary';
+import { APP_SETTINGS } from '../../config/appSettings';
+import { reportError, clearError } from '../data/errorState';
 import { CustomWall, generateAllDefaultWalls, clampWallToBuilding } from '../graphics/CustomWalls';
 import { InteractiveZone } from '../data/interactiveZones';
 import ZoneInteriorsUI from './ZoneInteriorsUI';
@@ -36,19 +39,31 @@ export default function BuildingModelViewer() {
   const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'flight'>('orbit');
   const [perfTier, setPerfTier] = useState<'low' | 'medium' | 'high'>('high');
 
-  const [lightingMode] = useState<'noon' | 'sunset' | 'night' | 'realtime'>('realtime');
+  // Время суток: по реальному времени (realtime) или фиксированный день (noon) — по настройке
+  const [lightingMode] = useState<'noon' | 'sunset' | 'night' | 'realtime'>(
+    APP_SETTINGS.timeOfDayByApi ? 'realtime' : 'noon'
+  );
   const [autoOptimize] = useState(true);
   const [fps, setFps] = useState(0);
   const [fpsHistory, setFpsHistory] = useState<number[]>([]);
   const [optimizationNotice, setOptimizationNotice] = useState<string | null>(null);
   const [weatherData, setWeatherData] = useState<any>(null);
-  const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>('auto');
+  const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>(
+    APP_SETTINGS.weatherByApi ? 'auto' : 'clear'
+  );
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   const applyWeather = (mode: WeatherMode | 'auto') => {
     setWeatherMode(mode);
     weatherState.setManual(mode === 'auto' ? null : mode);
   };
+
+  // Настройка «погода по API»: если выключена — фиксируем ясную погоду (без интернета)
+  useEffect(() => {
+    if (!APP_SETTINGS.weatherByApi) {
+      weatherState.setManual('clear');
+    }
+  }, []);
 
   // Кнопка «выключения» (как на пульте): возврат на начальный экран + сброс всех изменений сессии
   const handlePowerOff = () => {
@@ -58,8 +73,8 @@ export default function BuildingModelViewer() {
     setCameraMode('orbit');
     setActiveFloor(6);
     setIsAnimating(false);
-    // Погода обратно на авто
-    applyWeather('auto');
+    // Погода обратно на значение по умолчанию (API или ясно — по настройке)
+    applyWeather(APP_SETTINGS.weatherByApi ? 'auto' : 'clear');
     // Выходим из редактора и сбрасываем несохранённые правки стен к исходным
     setIsEditMode(false);
     setIsEditorCollapsed(false);
@@ -78,8 +93,10 @@ export default function BuildingModelViewer() {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
         console.log('SW registered successfully:', reg);
+        clearError(401);
       }).catch((e) => {
         console.warn('SW registration failed:', e);
+        reportError(401);
       });
     }
 
@@ -104,8 +121,10 @@ export default function BuildingModelViewer() {
           const json = await res.json();
           setWeatherData(json);
         }
+        clearError(102);
       } catch (err) {
         console.warn("Failed to fetch weather in UI:", err);
+        reportError(102);
       }
     };
     fetchWeather();
@@ -518,7 +537,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v124_sky";
+    const WALLS_VERSION = "v125_settings";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -537,8 +556,10 @@ export default function BuildingModelViewer() {
         setCustomWalls(walls);
         setOriginalWalls(walls);
         localStorage.setItem('npc_custom_walls', JSON.stringify(walls));
+        clearError(201);
         return true;
       } catch {
+        reportError(201);
         return false;
       }
     };
@@ -934,6 +955,7 @@ export default function BuildingModelViewer() {
             className="absolute inset-0 z-40"
           >
             <StartMenu
+              locked={APP_SETTINGS.modelLocked}
               onStart={() => {
                 setHasStarted(true);
                 setCameraMode('orbit');
@@ -943,6 +965,9 @@ export default function BuildingModelViewer() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Плашка ошибок (номер сверху, место снизу) */}
+      <ErrorOverlay />
 
       {/* Кнопка выключения (возврат на начальный экран + сброс изменений) */}
       {hasStarted && !selectedZone && (

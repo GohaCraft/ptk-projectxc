@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { weatherState } from '../data/weatherState';
+import { APP_SETTINGS } from '../../config/appSettings';
 import {
   RampFloorMaterial,
   RampMetalMaterial,
@@ -2225,7 +2226,7 @@ export const WindowsGroup = ({ activeFloor, wallsOpacity = 1.0 }: { activeFloor:
 
   return (
     <group>
-      {markers}
+      {APP_SETTINGS.showBlockNumbers && markers}
       {[0, 1, 2, 3, 4].map(f => (
         <FloorSlice key={f} activeFloor={activeFloor} floorIndex={f}>
           {r[f]}

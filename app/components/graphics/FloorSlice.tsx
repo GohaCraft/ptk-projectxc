@@ -3,6 +3,7 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { APP_SETTINGS } from '../../config/appSettings';
 
 /**
  * FloorSlice — показывает/прячет этаж с лёгкой анимацией «сборки/разборки».
@@ -42,6 +43,16 @@ export const FloorSlice: React.FC<{
   useFrame((_, delta) => {
     const g = groupRef.current;
     if (!g) return;
+
+    // Анимации выключены настройкой — показываем/прячем мгновенно.
+    if (!APP_SETTINGS.animations) {
+      prog.current = isVisible ? 1 : 0;
+      g.position.y = 0;
+      g.scale.set(1, 1, 1);
+      g.visible = isVisible;
+      return;
+    }
+
     const dt = Math.min(delta, 0.03);
     const target = isVisible ? 1 : 0;
     const p = prog.current;

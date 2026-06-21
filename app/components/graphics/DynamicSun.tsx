@@ -6,6 +6,7 @@ import { useFrame } from "@react-three/fiber";
 import { Sky, Stars } from "@react-three/drei";
 import SunCalc from "suncalc";
 import { weatherState } from "../data/weatherState";
+import { reportError, clearError } from "../data/errorState";
 
 /* ------------------------------------------------------------------
    SkyClouds – реалистичный и ОЧЕНЬ дешёвый слой облаков.
@@ -251,8 +252,10 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
             windDir: currentWindDir,
           }));
         }
+        clearError(101);
       } catch (e) {
         console.warn("[DynamicSun] Weather API fetch failed. Keeping current state gracefully.", e);
+        reportError(101);
       }
     };
 
