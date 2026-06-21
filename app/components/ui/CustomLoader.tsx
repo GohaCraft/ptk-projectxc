@@ -195,7 +195,7 @@ export function CustomLoader({ hasStarted, firstFrameReady }: CustomLoaderProps)
 
             {/* Заголовок */}
             <span className="text-[11px] font-mono tracking-[0.45em] uppercase text-slate-300 font-semibold mb-1.5">
-              Норильский политехнический
+              Политехнический колледж
             </span>
             <span className="text-[9.5px] font-mono tracking-[0.3em] uppercase text-slate-500 font-medium mb-10">
               Цифровой двойник здания

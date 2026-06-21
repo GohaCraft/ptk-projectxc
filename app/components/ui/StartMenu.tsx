@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Lock } from 'lucide-react';
 import { APP_VERSION } from '../data/changelog';
+import VersionInfo from './VersionInfo';
 
 export default function StartMenu({ onStart, locked = false }: { onStart: () => void; locked?: boolean }) {
   const [showLocked, setShowLocked] = useState(false);
@@ -18,6 +19,9 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full relative overflow-hidden bg-[#05060a] text-[#f1f5f9]">
+      {/* Версии: кнопка (i) + окно «Что нового» — прямо на вступительном экране */}
+      <VersionInfo />
+
       {/* ── Фон: северное сияние (полярная тема Норильска) ───────────────── */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         {/* мягкие световые пятна */}

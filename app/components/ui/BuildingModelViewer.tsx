@@ -8,7 +8,6 @@ import { weatherState, WeatherMode } from '../data/weatherState';
 
 import WallEditorUI from './WallEditorUI';
 import FlightJoystick from './FlightJoystick';
-import VersionInfo from './VersionInfo';
 import StartMenu from './StartMenu';
 import ErrorOverlay from './ErrorOverlay';
 import { CustomLoader } from './CustomLoader';
@@ -537,7 +536,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v126_settings2";
+    const WALLS_VERSION = "v127_ui";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -853,32 +852,6 @@ export default function BuildingModelViewer() {
       {/* Custom loading overlay */}
       <CustomLoader hasStarted={hasStarted} firstFrameReady={firstFrameReady} />
 
-      {/* Погодный переключатель */}
-      {hasStarted && !selectedZone && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-1 bg-black/45 backdrop-blur-md rounded-xl p-1 border border-white/10">
-          {([
-            { m: 'auto',   Icon: RefreshCw, t: 'Авто' },
-            { m: 'clear',  Icon: Sun,       t: 'Ясно' },
-            { m: 'cloudy', Icon: Cloud,     t: 'Облачно' },
-            { m: 'rain',   Icon: CloudRain, t: 'Дождь' },
-            { m: 'snow',   Icon: CloudSnow, t: 'Снег' },
-            { m: 'storm',  Icon: Zap,       t: 'Гроза' },
-          ] as const).map(({ m, Icon, t }) => (
-            <button
-              key={m}
-              onClick={() => applyWeather(m as WeatherMode | 'auto')}
-              title={t}
-              className={`flex flex-col items-center justify-center px-2.5 py-1.5 rounded-lg transition-colors ${
-                weatherMode === m ? 'bg-sky-500/80 text-white' : 'text-slate-300 hover:bg-white/10'
-              }`}
-            >
-              <Icon size={16} />
-              <span className="text-[9px] mt-0.5 leading-none">{t}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Presentation view for designer concept spaces */}
       <AnimatePresence mode="wait">
         {selectedZone && (
@@ -975,7 +948,7 @@ export default function BuildingModelViewer() {
           id="btn_power_off"
           onClick={handlePowerOff}
           title="Выключить — вернуться в начальное меню и сбросить изменения"
-          className="group absolute left-4 md:left-6 top-4 md:top-6 z-30 pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center bg-[#0c0d12]/92 backdrop-blur-3xl border border-slate-800/80 shadow-2xl text-slate-300 hover:text-white hover:border-red-500/70 hover:bg-red-950/40 transition-all duration-300 cursor-pointer animate-fade-in"
+          className="group absolute right-4 md:right-6 top-4 md:top-6 z-30 pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center bg-[#0c0d12]/92 backdrop-blur-3xl border border-slate-800/80 shadow-2xl text-slate-300 hover:text-white hover:border-red-500/70 hover:bg-red-950/40 transition-all duration-300 cursor-pointer animate-fade-in"
         >
           <Power size={17} className="text-slate-300 group-hover:text-red-400 transition-colors" strokeWidth={2.4} />
         </button>
@@ -983,9 +956,6 @@ export default function BuildingModelViewer() {
 
       {/* Экранный джойстик для режима «Облёт» (киоск без клавиатуры) */}
       {hasStarted && !selectedZone && cameraMode === 'flight' && <FlightJoystick />}
-
-      {/* Версии: кнопка (i) + авто-окно «Что нового» при первом запуске версии */}
-      {hasStarted && !selectedZone && <VersionInfo />}
 
       {/* Cyberpunk floor selector overlay */}
       {hasStarted && (
