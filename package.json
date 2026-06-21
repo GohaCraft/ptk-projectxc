@@ -1,6 +1,6 @@
 {
   "name": "zgu-model",
-  "version": "0.1.0",
+  "version": "1.22.0",
   "private": true,
   "engines": {
     "node": ">=18.17.0"
@@ -11,16 +11,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "installer:art": "node scripts/gen-installer-art.mjs",
     "desktop:export": "node scripts/desktop-export.mjs",
     "desktop:start": "electron electron-main.js",
     "desktop:pack": "electron-builder --dir",
-    "desktop:dist": "electron-builder --win --x64"
+    "desktop:dist": "electron-builder --win --x64",
+    "desktop:publish": "electron-builder --win --x64 --publish always"
   },
   "dependencies": {
     "@react-three/drei": "^9.105.6",
     "@react-three/fiber": "^8.16.2",
     "@react-three/postprocessing": "^2.19.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.2.1",
     "framer-motion": "^11.1.7",
     "framer-motion-3d": "^12.4.13",
     "lucide-react": "^1.14.0",
@@ -54,8 +57,16 @@
     "productName": "ZGU-Model-3D",
     "copyright": "Copyright © 2026 ZGU",
     "directories": {
-      "output": "desktop/output"
+      "output": "desktop/output",
+      "buildResources": "build"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GohaCraft",
+        "repo": "ptk-projectxc"
+      }
+    ],
     "files": [
       "electron-main.js",
       "out/**/*",
@@ -75,8 +86,17 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "shortcutName": "ЗГУ 3D Модель",
-      "language": "1049"
+      "uninstallDisplayName": "ЗГУ 3D Модель ${version}",
+      "language": "1049",
+      "license": "build/license_ru.txt",
+      "installerIcon": "public/favicon.ico",
+      "uninstallerIcon": "public/favicon.ico",
+      "installerHeaderIcon": "public/favicon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/installerSidebar.bmp"
     }
   }
 }

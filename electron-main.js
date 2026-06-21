@@ -1,7 +1,60 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+
+// ── Авто-обновление с GitHub Releases (electron-updater) ─────────────────────
+// Проверяет последнюю опубликованную версию в репозитории и тихо скачивает её,
+// а после — предлагает перезапуститься. Работает только в собранном .exe.
+function setupAutoUpdater() {
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) {
+    console.log('[Updater] electron-updater не установлен — пропускаем авто-обновление.');
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Доступна новая версия:', info && info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { state: 'available', version: info && info.version });
+    }
+  });
+
+  autoUpdater.on('download-progress', (p) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { state: 'downloading', percent: Math.round(p.percent) });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    console.log('[Updater] Обновление загружено:', info && info.version);
+    if (!mainWindow) return;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['Перезапустить сейчас', 'Позже'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Доступно обновление',
+      message: `Установлена новая версия ${info && info.version}.`,
+      detail: 'Перезапустите приложение, чтобы применить обновление.',
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.warn('[Updater] Ошибка проверки обновлений:', err && err.message);
+  });
+
+  // Тихая проверка при запуске (не мешает, если нет интернета/релизов)
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.warn('[Updater] checkForUpdates failed:', err && err.message);
+  });
+}
 
 let mainWindow;
 let localServer;
@@ -153,6 +206,8 @@ app.whenReady().then(async () => {
     console.error("Initialization failed:", err);
     createWindow(null);
   }
+  // Проверяем обновления с GitHub после старта окна
+  setupAutoUpdater();
 });
 
 // Clean shut down
