@@ -10,6 +10,7 @@ import WallEditorUI from './WallEditorUI';
 import FlightJoystick from './FlightJoystick';
 import StartMenu from './StartMenu';
 import ErrorOverlay from './ErrorOverlay';
+import ZonesLockedMeme from './ZonesLockedMeme';
 import { CustomLoader } from './CustomLoader';
 import WebGLBoundary from './WebGLBoundary';
 import { APP_SETTINGS } from '../../config/appSettings';
@@ -536,7 +537,7 @@ export default function BuildingModelViewer() {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v127_ui";
+    const WALLS_VERSION = "v128_sixseven";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -941,6 +942,9 @@ export default function BuildingModelViewer() {
 
       {/* Плашка ошибок (номер сверху, место снизу) */}
       <ErrorOverlay />
+
+      {/* Пасхалка «six seven»: если зоны отключены — две руки «ЗОНЫ / ЗАБЛОКИРОВАНЫ» */}
+      {hasStarted && !selectedZone && !APP_SETTINGS.zonesEnabled && <ZonesLockedMeme />}
 
       {/* Кнопка выключения (возврат на начальный экран + сброс изменений) */}
       {hasStarted && !selectedZone && (
