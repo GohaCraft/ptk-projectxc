@@ -11,7 +11,6 @@ import { Lighting } from './Lighting';
 import DynamicSun from './DynamicSun';
 
 import {
-  getProceduralTextures,
   PanelMaterial,
   StuccoMaterial,
   BrickMaterial,
@@ -271,10 +270,6 @@ export default function Scene3D({
     };
   }, [selectedWallObject, helperWeights]);
   
-  const tex = useMemo(() => {
-    return (typeof window !== 'undefined') ? getProceduralTextures() : null;
-  }, []);
-
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="3d-scene-container">
       <Canvas
@@ -312,13 +307,13 @@ export default function Scene3D({
           onFallback={() => setDpr(0.85)}
         />
         <Suspense fallback={null}>
-        {perfTier !== 'low' && <ShadowThrottle every={3} />}
+        {perfTier !== 'low' && <ShadowThrottle every={perfTier === 'high' ? 3 : 4} />}
         {onFpsUpdate && <FpsTracker onFpsUpdate={onFpsUpdate} />}
         <Lighting />
-        <DynamicSun lightingMode={lightingMode} />
+        <DynamicSun lightingMode={lightingMode} perfTier={perfTier} />
 
-        {/* Земля с лужами и эффекты погоды */}
-        <WeatherLayer tex={tex} />
+        {/* Осадки, ветер и молнии грозы */}
+        <WeatherLayer />
 
         <group position={[0, 0, 0]}>
 

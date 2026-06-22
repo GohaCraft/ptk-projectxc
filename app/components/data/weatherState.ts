@@ -3,10 +3,12 @@ export type WeatherMode = 'clear' | 'cloudy' | 'rain' | 'snow' | 'storm';
 
 export interface WeatherStateValue {
   isNight: boolean;
-  rain: number;       // 0..1
-  snow: number;       // 0..1
+  rain: number;       // 0..5
+  snow: number;       // 0..5
   storm: number;      // 0..1 (гроза/молнии)
   cloudCover: number; // 0..100
+  windSpeed: number;  // м/с — реальный ветер (наклон дождя/снега, дрейф облаков)
+  windDir: number;    // градусы (откуда дует), 0..360
   manual: WeatherMode | null; // ручной выбор; null = по API
 }
 
@@ -26,11 +28,16 @@ export const weatherState = {
   snow: 0,
   storm: 0,
   cloudCover: 50,
+  windSpeed: 3,
+  windDir: 180,
   manual: null as WeatherMode | null,
   listeners: new Set<(state: WeatherStateValue) => void>(),
 
   _snapshot(): WeatherStateValue {
-    return { isNight: this.isNight, rain: this.rain, snow: this.snow, storm: this.storm, cloudCover: this.cloudCover, manual: this.manual };
+    return {
+      isNight: this.isNight, rain: this.rain, snow: this.snow, storm: this.storm,
+      cloudCover: this.cloudCover, windSpeed: this.windSpeed, windDir: this.windDir, manual: this.manual,
+    };
   },
 
   _notify() {
@@ -38,19 +45,19 @@ export const weatherState = {
     setTimeout(() => { this.listeners.forEach((l) => l(snap)); }, 0);
   },
 
-  // Обновление из API (DynamicSun). Если включён ручной режим — берём только время суток.
+  // Обновление из API (DynamicSun). Время суток и ветер — это окружение, поэтому
+  // применяются ВСЕГДА (даже в ручном режиме). Осадки/облачность — только когда
+  // погода не выбрана вручную.
   setState(val: Partial<WeatherStateValue>) {
-    if (this.manual) {
-      if (val.isNight !== undefined && val.isNight !== this.isNight) {
-        this.isNight = val.isNight;
-        this._notify();
-      }
-      return;
-    }
     let changed = false;
-    (['isNight', 'rain', 'snow', 'storm', 'cloudCover'] as const).forEach((k) => {
+    (['isNight', 'windSpeed', 'windDir'] as const).forEach((k) => {
       if (val[k] !== undefined && (this as any)[k] !== val[k]) { (this as any)[k] = val[k]; changed = true; }
     });
+    if (!this.manual) {
+      (['rain', 'snow', 'storm', 'cloudCover'] as const).forEach((k) => {
+        if (val[k] !== undefined && (this as any)[k] !== val[k]) { (this as any)[k] = val[k]; changed = true; }
+      });
+    }
     if (changed) this._notify();
   },
 

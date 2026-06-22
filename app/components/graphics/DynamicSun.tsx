@@ -166,10 +166,22 @@ function SkyClouds({
    DynamicSun – updates sun position, sky colour, ambient light,
    and coordinates smooth transitions to prevent any lighting pops.
    ------------------------------------------------------------------ */
-export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "noon" | "sunset" | "night" | "realtime" }) {
+export default function DynamicSun({
+  lightingMode = "noon",
+  perfTier = "high",
+}: {
+  lightingMode?: "noon" | "sunset" | "night" | "realtime";
+  perfTier?: "low" | "medium" | "high";
+}) {
   const sunLightRef = useRef<THREE.DirectionalLight>(null);
   const ambientLightRef = useRef<THREE.AmbientLight>(null);
   const hemisphereLightRef = useRef<THREE.HemisphereLight>(null);
+
+  // Реальное направление НА солнце (мировое), нормализованное — для подсветки облаков.
+  const sunDirRef = useRef<THREE.Vector3>(new THREE.Vector3(0.3, 1, 0.2).normalize());
+
+  // Размер карты теней по тиру: на слабом железе 1024² вместо 2048² (вчетверо дешевле).
+  const shadowMapSize = perfTier === "high" ? 2048 : 1024;
 
   const [data, setData] = useState<{
     brightness: number;
@@ -269,8 +281,11 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
 
   // Sync state for global usage (Weather controllers, Architectural materials, etc.)
   useEffect(() => {
-    weatherState.setState({ isNight: data.isNight, rain: data.rain, snow: data.snow, storm: data.storm, cloudCover: data.cloudCover });
-  }, [data.isNight, data.rain, data.snow, data.storm, data.cloudCover]);
+    weatherState.setState({
+      isNight: data.isNight, rain: data.rain, snow: data.snow, storm: data.storm,
+      cloudCover: data.cloudCover, windSpeed: data.windSpeed, windDir: data.windDir,
+    });
+  }, [data.isNight, data.rain, data.snow, data.storm, data.cloudCover, data.windSpeed, data.windDir]);
 
   // Ручной режим погоды: когда пользователь выбрал погоду вручную — сразу применяем
   // её к облакам/солнцу (cloudCover) и осадкам.
@@ -402,6 +417,10 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
         clampedDelta * 2.2
       );
       sunLightRef.current.color.lerp(sunTargets.current.color, clampedDelta * 2.2);
+      // Реальное направление на солнце для подсветки облаков (мировые координаты).
+      if (sunLightRef.current.position.lengthSq() > 1e-4) {
+        sunDirRef.current.copy(sunLightRef.current.position).normalize();
+      }
     }
 
     // B. Lerp Background Sky Dome sun coordinates
@@ -460,7 +479,7 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
         isNight={data.isNight}
         windDir={data.windDir}
         windSpeed={data.windSpeed}
-        sunDirRef={currentSkyPosRef}
+        sunDirRef={sunDirRef}
       />
 
       {/* Gentle Constellation field on night atmospheres */}
@@ -475,11 +494,12 @@ export default function DynamicSun({ lightingMode = "noon" }: { lightingMode?: "
         intensity={0}
         color="#ffffff"
         castShadow={true}
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-bias={-0.0001}
         shadow-normalBias={0.03}
       >
-        <orthographicCamera attach="shadow-camera" args={[-70, 70, 70, -70, 0.5, 400]} />
+        {/* Кадрируем теневую камеру по зданию (±48 м): резче тени при том же разрешении. */}
+        <orthographicCamera attach="shadow-camera" args={[-48, 48, 48, -48, 0.5, 400]} />
       </directionalLight>
 
       {/* Ground Albedo Bounced Light (Simulating high snow reflectance) */}
