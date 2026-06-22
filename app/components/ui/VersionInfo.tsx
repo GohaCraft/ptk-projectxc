@@ -22,10 +22,10 @@ function cmpV(a: string, b: string): number {
 
 type Tier = 'current' | 'release' | 'beta' | 'alpha';
 function tierOf(version: string): Tier {
-  if (version === APP_VERSION) return 'current';
-  if (parseV(version)[0] >= 1) return 'release';       // 1.x — релиз
-  if (cmpV(version, '0.13.0') >= 0) return 'beta';      // 0.13.0 … <1.0 — бета
-  return 'alpha';                                       // до 0.13.0 — альфа
+  if (version === APP_VERSION) return 'current';       // самая свежая
+  if (cmpV(version, '1.22') >= 0) return 'release';    // 1.22, 1.23 — релиз
+  if (cmpV(version, '1.18') >= 0) return 'beta';       // 1.18 … 1.21 — бета
+  return 'alpha';                                      // 0.13.0 и всё ниже — альфа
 }
 
 // Переливающиеся градиенты для плашек
