@@ -266,7 +266,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
-    version: '0.0.5',
+    version: '0.0.1',
     date: '2025',
     title: 'Самая первая версия — первый 2D-план',
     changes: [
