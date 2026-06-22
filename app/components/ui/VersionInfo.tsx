@@ -7,6 +7,47 @@ import { APP_VERSION, CHANGELOG, ChangelogEntry } from '../data/changelog';
 
 const SEEN_KEY = 'npc_last_seen_version';
 
+// Сравнение версий "a.b.c"
+function parseV(v: string): number[] {
+  return v.split('.').map((n) => parseInt(n, 10) || 0);
+}
+function cmpV(a: string, b: string): number {
+  const pa = parseV(a), pb = parseV(b);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+type Tier = 'current' | 'release' | 'beta' | 'alpha';
+function tierOf(version: string): Tier {
+  if (version === APP_VERSION) return 'current';
+  if (parseV(version)[0] >= 1) return 'release';       // 1.x — релиз
+  if (cmpV(version, '0.13.0') >= 0) return 'beta';      // 0.13.0 … <1.0 — бета
+  return 'alpha';                                       // до 0.13.0 — альфа
+}
+
+// Переливающиеся градиенты для плашек
+const TIER_BADGE: Record<Tier, { label: string; grad: string }> = {
+  current: { label: 'Текущая',   grad: 'linear-gradient(90deg,#10b981,#34d399,#10b981)' },
+  release: { label: 'Релиз',     grad: 'linear-gradient(90deg,#0284c7,#38bdf8,#0284c7)' },
+  beta:    { label: 'Бета',      grad: 'linear-gradient(90deg,#d97706,#fbbf24,#d97706)' },
+  alpha:   { label: 'Альфа',     grad: 'linear-gradient(90deg,#7c3aed,#c084fc,#7c3aed)' },
+};
+
+function TierBadge({ tier }: { tier: Tier }) {
+  const b = TIER_BADGE[tier];
+  return (
+    <span
+      className="ch-badge font-mono text-[9px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-full text-white border border-white/20 shadow-[0_0_10px_-2px_rgba(255,255,255,0.35)]"
+      style={{ backgroundImage: b.grad }}
+    >
+      {b.label}
+    </span>
+  );
+}
+
 function EntryCard({ entry, highlight = false }: { entry: ChangelogEntry; highlight?: boolean }) {
   return (
     <div className={`rounded-xl border p-3.5 ${highlight ? 'border-sky-500/40 bg-sky-950/20' : 'border-slate-800/70 bg-[#121319]'}`}>
@@ -18,15 +59,7 @@ function EntryCard({ entry, highlight = false }: { entry: ChangelogEntry; highli
           <span className="text-slate-200 text-[13px] font-semibold">{entry.title}</span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
-          {highlight ? (
-            <span className="font-mono text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/40">
-              Текущая
-            </span>
-          ) : (
-            <span className="font-mono text-[9px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/25 to-orange-500/20 text-amber-300 border border-amber-400/40 shadow-[0_0_10px_-2px_rgba(245,158,11,0.5)]">
-              Бета
-            </span>
-          )}
+          <TierBadge tier={tierOf(entry.version)} />
           <span className="text-slate-500 text-[10px] font-mono">{entry.date}</span>
         </span>
       </div>

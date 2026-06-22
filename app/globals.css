@@ -10,3 +10,12 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+/* Скрыть полосу прокрутки (но прокрутка работает) */
+.scrollbar-none::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Переливающаяся мини-плашка версии */
+@keyframes ch-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.ch-badge { background-size: 200% 100%; animation: ch-shimmer 2.6s linear infinite; }
+
