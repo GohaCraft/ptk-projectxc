@@ -17,7 +17,18 @@ function EntryCard({ entry, highlight = false }: { entry: ChangelogEntry; highli
           </span>
           <span className="text-slate-200 text-[13px] font-semibold">{entry.title}</span>
         </span>
-        <span className="text-slate-500 text-[10px] font-mono">{entry.date}</span>
+        <span className="flex items-center gap-2 shrink-0">
+          {highlight ? (
+            <span className="font-mono text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/40">
+              Текущая
+            </span>
+          ) : (
+            <span className="font-mono text-[9px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/25 to-orange-500/20 text-amber-300 border border-amber-400/40 shadow-[0_0_10px_-2px_rgba(245,158,11,0.5)]">
+              Бета
+            </span>
+          )}
+          <span className="text-slate-500 text-[10px] font-mono">{entry.date}</span>
+        </span>
       </div>
       <ul className="flex flex-col gap-1.5">
         {entry.changes.map((c, i) => (
