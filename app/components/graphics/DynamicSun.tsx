@@ -8,6 +8,11 @@ import SunCalc from "suncalc";
 import { weatherState } from "../data/weatherState";
 import { reportError, clearError } from "../data/errorState";
 
+// Переиспользуемые scratch-цвета для покадрового лерпа света — без аллокаций в useFrame.
+const _ambientColor = new THREE.Color();
+const _hemiSky = new THREE.Color();
+const _hemiGround = new THREE.Color();
+
 /* ------------------------------------------------------------------
    SkyClouds – реалистичный и ОЧЕНЬ дешёвый слой облаков.
    Вместо сотен теневых сфер — один купол с фрактальным шумом (FBM),
@@ -432,7 +437,7 @@ export default function DynamicSun({
     // C. Lerp Ambient light values
     if (ambientLightRef.current) {
       const targetAmbientIntensity = 0.30 + data.brightness * 0.15 + (data.cloudCover / 100) * 0.25;
-      const targetAmbientColor = new THREE.Color(data.isNight ? "#1f2d40" : "#d8e9ff");
+      const targetAmbientColor = _ambientColor.set(data.isNight ? "#1f2d40" : "#d8e9ff");
 
       ambientLightRef.current.intensity = THREE.MathUtils.lerp(
         ambientLightRef.current.intensity,
@@ -444,8 +449,8 @@ export default function DynamicSun({
 
     // D. Lerp Hemisphere bounced light values
     if (hemisphereLightRef.current) {
-      const targetHemiSkyColor = new THREE.Color(data.isNight ? '#1e293b' : '#bfe3ff');
-      const targetHemiGroundColor = new THREE.Color(data.isNight ? '#0b0f19' : '#f1f5f9');
+      const targetHemiSkyColor = _hemiSky.set(data.isNight ? '#1e293b' : '#bfe3ff');
+      const targetHemiGroundColor = _hemiGround.set(data.isNight ? '#0b0f19' : '#f1f5f9');
       const targetHemiIntensity = data.isNight ? 0.25 : 0.85;
 
       hemisphereLightRef.current.intensity = THREE.MathUtils.lerp(

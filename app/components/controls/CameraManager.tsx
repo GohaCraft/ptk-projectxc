@@ -29,6 +29,18 @@ const getFloorHeight = (floor: number) => {
 // Радиус «тела» камеры для столкновений (камера = сфера этого радиуса)
 const COLLISION_RADIUS = 0.7;
 
+// Мёртвая зона экранного джойстика — гасит дрейф сенсора на киоске.
+const JOY_DEADZONE = 0.06;
+
+// Переиспользуемые scratch-объекты (CameraManager — единственный инстанс на сцену).
+// Считаются каждый кадр в режиме облёта; без этого были бы аллокации и нагрузка на GC.
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _moveDir = new THREE.Vector3();
+const _horiz = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
 // Первое пересечение, у которого ВЕСЬ путь к корню видим (скрытые этажи игнорим)
 function firstVisibleHit(hits: THREE.Intersection[]): THREE.Intersection | null {
   for (const h of hits) {
@@ -264,7 +276,10 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
     prevSelectedZone.current = selectedZone;
   }, [activeFloor, cameraMode, controlsRef, camera, selectedZone]);
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    // Ограничиваем шаг времени: после неактивной вкладки/лага delta может быть
+    // огромной и «телепортировать» камеру сквозь стены или мимо цели перехода.
+    const delta = Math.min(rawDelta, 0.05);
     const controls = controlsRef.current;
 
     if (isTransitioning.current) {
@@ -299,19 +314,19 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
       if (!isTyping) {
         // ── Экранный джойстик (киоск): поворот по горизонтали ──────────────
         // Применяем поворот до расчёта направления движения.
-        if (flightControl.active && flightControl.turnX !== 0) {
+        if (flightControl.active && Math.abs(flightControl.turnX) > JOY_DEADZONE) {
           yaw.current -= flightControl.turnX * 1.9 * delta;
-          const euler = new THREE.Euler(pitch.current, yaw.current, 0, 'YXZ');
-          camera.quaternion.setFromEuler(euler);
+          _euler.set(pitch.current, yaw.current, 0);
+          camera.quaternion.setFromEuler(_euler);
         }
 
-        const forward = new THREE.Vector3();
+        const forward = _forward;
         camera.getWorldDirection(forward);
 
-        const right = new THREE.Vector3();
+        const right = _right;
         right.crossVectors(forward, camera.up).normalize();
 
-        const moveDir = new THREE.Vector3(0, 0, 0);
+        const moveDir = _moveDir.set(0, 0, 0);
         if (keys.current.w) moveDir.add(forward);
         if (keys.current.s) moveDir.sub(forward);
         if (keys.current.d) moveDir.add(right);
@@ -323,8 +338,8 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
 
         // Джойстик: ход вперёд/назад по горизонтали (не утыкаясь в пол/небо)
         let analogSpeed = 0;
-        if (flightControl.active && flightControl.moveY !== 0) {
-          const horiz = new THREE.Vector3(forward.x, 0, forward.z);
+        if (flightControl.active && Math.abs(flightControl.moveY) > JOY_DEADZONE) {
+          const horiz = _horiz.set(forward.x, 0, forward.z);
           if (horiz.lengthSq() > 0) {
             horiz.normalize();
             moveDir.addScaledVector(horiz, flightControl.moveY);
@@ -350,9 +365,9 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
             const amt = moveDir[ax];
             if (amt === 0) continue;
             const sign = Math.sign(amt);
-            const dir = new THREE.Vector3();
-            dir[ax] = sign;
-            ray.set(camera.position, dir);
+            _dir.set(0, 0, 0);
+            _dir[ax] = sign;
+            ray.set(camera.position, _dir);
             ray.far = Math.abs(amt) + COLLISION_RADIUS;
             const hits = ray.intersectObjects(scene.children, true);
             const hit = firstVisibleHit(hits);
