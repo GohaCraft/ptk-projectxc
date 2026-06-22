@@ -3,6 +3,14 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
+// ── Надёжный рендер 3D на любом железе (важно для слабого/проблемного киоска) ──
+// Игнорируем чёрный список GPU и разрешаем программный рендер (SwiftShader),
+// чтобы WebGL-контекст создавался ВСЕГДА — даже без нормальной видеокарты/драйвера.
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-unsafe-swiftshader'); // программный WebGL как запасной путь
+app.disableDomainBlockingFor3DAPIs();
+
+
 // ── Авто-обновление с GitHub Releases (electron-updater) ─────────────────────
 // Проверяет последнюю опубликованную версию в репозитории и тихо скачивает её,
 // а после — предлагает перезапуститься. Работает только в собранном .exe.
