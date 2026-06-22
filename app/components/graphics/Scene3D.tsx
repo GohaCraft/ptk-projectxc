@@ -73,6 +73,7 @@ import {
 } from './CustomWalls';
 import { InteractiveZone, INTERACTIVE_ZONES } from '../data/interactiveZones';
 import { APP_SETTINGS } from '../../config/appSettings';
+import { maxDprForTier } from '../data/perfOptimizer';
 
 // Export types and functions for external compatibility (e.g. BuildingModelViewer)
 export type { CustomWall, InteractiveZone };
@@ -201,7 +202,7 @@ export default function Scene3D({
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
 
   // Адаптивное разрешение: верхняя планка по тиру, PerformanceMonitor сам понижает/поднимает
-  const maxDpr = perfTier === 'low' ? 1 : perfTier === 'medium' ? 1.25 : 1.5;
+  const maxDpr = maxDprForTier(perfTier);
   const [dpr, setDpr] = useState(maxDpr);
   useEffect(() => { setDpr(maxDpr); }, [maxDpr]);
 

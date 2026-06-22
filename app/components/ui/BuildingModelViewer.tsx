@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, RefreshCw, Power } from 'lucide-react';
@@ -18,6 +18,14 @@ import { reportError, clearError } from '../data/errorState';
 import { CustomWall, generateAllDefaultWalls, clampWallToBuilding } from '../graphics/CustomWalls';
 import { InteractiveZone } from '../data/interactiveZones';
 import ZoneInteriorsUI from './ZoneInteriorsUI';
+import {
+  PerfTier,
+  isWeakGpu,
+  pickInitialTier,
+  nextLowerTier,
+  shouldDowngrade,
+  FPS_HISTORY_SIZE,
+} from '../data/perfOptimizer';
 
 // Lazy load Scene3D so that 3D rendering context is only loaded on browser environment
 const Scene3D = dynamic(() => import('../graphics/Scene3D'), {
@@ -47,7 +55,7 @@ export default function BuildingModelViewer() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [wallsOpacity, setWallsOpacity] = useState(1.0);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'flight'>('orbit');
-  const [perfTier, setPerfTier] = useState<'low' | 'medium' | 'high'>('high');
+  const [perfTier, setPerfTier] = useState<PerfTier>('high');
 
   // Время суток: по реальному времени (realtime) или фиксированный день (noon) — по настройке
   const [lightingMode] = useState<'noon' | 'sunset' | 'night' | 'realtime'>(
@@ -55,7 +63,9 @@ export default function BuildingModelViewer() {
   );
   const [autoOptimize] = useState(true);
   const [fps, setFps] = useState(0);
-  const [fpsHistory, setFpsHistory] = useState<number[]>([]);
+  // История FPS для грубого понижения тира. Ref, а не state: значение нужно
+  // только внутри эффекта и не влияет на рендер.
+  const fpsHistoryRef = useRef<number[]>([]);
   const [optimizationNotice, setOptimizationNotice] = useState<string | null>(null);
   const [weatherData, setWeatherData] = useState<any>(null);
   const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>(
@@ -515,32 +525,29 @@ export default function BuildingModelViewer() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
-      const cores = navigator.hardwareConcurrency || 4;
+    if (typeof window === 'undefined') return;
 
-      // Проверка GPU: встройки/софт-рендер -> ограничиваем качество (ядра != мощность GPU)
-      let weakGpu = false;
-      try {
-        const c = document.createElement('canvas');
-        const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
-        const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
-        const renderer = (gl && dbg) ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
-        weakGpu = /Intel|Microsoft Basic|SwiftShader|llvmpipe|Mali|Adreno|PowerVR|UHD|HD Graphics/i.test(renderer);
-        console.log('[Auto-Optimization] GPU:', renderer || 'unknown', '| cores:', cores);
-      } catch {}
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 2);
+    const cores = navigator.hardwareConcurrency || 4;
 
-      if (isMobileDevice || cores < 4) {
-        setPerfTier('low');
-        console.log("[Auto-Optimization] Low-end / Mobile -> LOW (тени выкл).");
-      } else if (weakGpu || cores < 12) {
-        setPerfTier('medium');
-        console.log("[Auto-Optimization] Mid-range / встроенный GPU -> MEDIUM (дешёвые тени, DPR 1.25).");
-      } else {
-        setPerfTier('high');
-        console.log("[Auto-Optimization] Powerful GPU -> HIGH.");
+    // Проверка GPU: встройки/софт-рендер -> ограничиваем качество (ядра != мощность GPU).
+    // Контекст-зонд сразу освобождаем, чтобы не тратить лимит WebGL-контекстов браузера.
+    let renderer = '';
+    try {
+      const c = document.createElement('canvas');
+      const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) renderer = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
       }
-    }
+    } catch {}
+
+    const tier = pickInitialTier({ isMobile, cores, weakGpu: isWeakGpu(renderer) });
+    setPerfTier(tier);
+    console.log(`[Auto-Optimization] GPU: ${renderer || 'unknown'} | cores: ${cores} -> ${tier.toUpperCase()}`);
   }, []);
 
   useEffect(() => {
@@ -761,27 +768,27 @@ export default function BuildingModelViewer() {
     }, 4500);
   };
 
+  // Грубое понижение тира — запасной вариант, тонкую регулировку DPR уже делает
+  // PerformanceMonitor. Логика вынесена из апдейтера setState (он должен быть
+  // чистым: в StrictMode апдейтер вызывается дважды и раньше дублировал понижения).
   useEffect(() => {
     if (!hasStarted || !autoOptimize || fps <= 0) return;
-    
-    setFpsHistory(prev => {
-      const next = [...prev, fps].slice(-6);
 
-      // Резкое снижение тира — только запасной вариант (адаптив разрешения уже сглаживает).
-      // Срабатывает при стойко низком FPS: 5 замеров подряд ниже 38.
-      if (next.length >= 5 && next.every(v => v < 38)) {
-        if (perfTier === 'high') {
-          setPerfTier('medium');
-          triggerNotification('Авто-оптимизация: снижено до СРЕДНЕГО качества (кадры ниже 44)');
-          return [];
-        } else if (perfTier === 'medium') {
-          setPerfTier('low');
-          triggerNotification('Авто-оптимизация: ТЕНИ ВЫКЛЮЧЕНЫ для плавности 4K (кадры ниже 44)');
-          return [];
-        }
-      }
-      return next;
-    });
+    const history = [...fpsHistoryRef.current, fps].slice(-FPS_HISTORY_SIZE);
+    fpsHistoryRef.current = history;
+
+    if (!shouldDowngrade(history)) return;
+
+    const lower = nextLowerTier(perfTier);
+    if (!lower) return;
+
+    setPerfTier(lower);
+    fpsHistoryRef.current = []; // копим историю заново, чтобы не падать сразу на 2 тира
+    triggerNotification(
+      lower === 'low'
+        ? 'Авто-оптимизация: тени отключены для плавности (стабильно низкий FPS)'
+        : 'Авто-оптимизация: качество снижено до СРЕДНЕГО (стабильно низкий FPS)'
+    );
   }, [fps, autoOptimize, perfTier, hasStarted]);
 
   const handleFloorChange = (newFloor: number) => {
