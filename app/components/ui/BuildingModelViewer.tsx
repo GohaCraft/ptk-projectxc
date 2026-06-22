@@ -34,6 +34,16 @@ export default function BuildingModelViewer() {
   const [activeFloor, setActiveFloor] = useState(6);
   const [hasStarted, setHasStarted] = useState(false);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
+
+  // Страховка: если «первый кадр» не отметился (на некоторых браузерах/GPU
+  // useFrame может не успеть до скрытия лоадера), всё равно показываем сцену,
+  // чтобы модель не оставалась невидимой при рабочем WebGL.
+  useEffect(() => {
+    if (!hasStarted || firstFrameReady) return;
+    const t = setTimeout(() => setFirstFrameReady(true), 4000);
+    return () => clearTimeout(t);
+  }, [hasStarted, firstFrameReady]);
+
   const [isAnimating, setIsAnimating] = useState(false);
   const [wallsOpacity, setWallsOpacity] = useState(1.0);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'flight'>('orbit');
