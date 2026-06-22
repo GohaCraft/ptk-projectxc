@@ -282,7 +282,12 @@ export default function Scene3D({
         dpr={dpr}
         gl={{
           antialias: true,
-          powerPreference: 'high-performance',
+          // 'default' вместо 'high-performance': на слабой интегрированной графике
+          // (Core i3 и т.п.) запрос high-performance может срывать создание WebGL-контекста.
+          powerPreference: 'default',
+          // Разрешаем контекст даже при «слабом» GPU / программном рендере (SwiftShader),
+          // иначе браузер отказывает: "Error creating WebGL context".
+          failIfMajorPerformanceCaveat: false,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
           outputColorSpace: THREE.SRGBColorSpace,
