@@ -42,10 +42,9 @@ export default function NavigatorMap({
   const meta = NAV.floorMeta[String(floor)];
   const data: RoomRoute | null = targetRoom ? NAV.rooms[targetRoom] : null;
 
-  // Геометрия маршрута для текущего этажа
   const view = useMemo(() => {
     if (!meta) return null;
-    const scaleRef = meta.w / 2150; // масштаб элементов относительно эталона
+    const scaleRef = meta.w / 2150;
     const ROUTE = "#2563eb";
     const stroke = 11 * scaleRef;
     const arrowSize = 16 * scaleRef;
@@ -63,97 +62,57 @@ export default function NavigatorMap({
         stair = { at: data.stairHint[data.stairHint.length - 1], toFloor: data.floor };
       }
     }
-    const arrows = routePts ? arrowsAlong(routePts, 170 * scaleRef) : [];
     return { scaleRef, ROUTE, stroke, arrowSize, routePts, target, stair };
   }, [meta, data, floor]);
 
   if (!meta || !view) return null;
   const s = view.scaleRef;
 
-  const Marker = ({ x, y, label, sub, color, ring }: { x: number; y: number; label: string; sub?: string; color: string; ring: string }) => {
+  const Marker = ({ x, y, label, sub, color, ring, pop }: { x: number; y: number; label: string; sub?: string; color: string; ring: string; pop?: boolean }) => {
     const r = 18 * s;
     return (
-      <g>
-        <circle cx={x} cy={y} r={r + 5 * s} fill="none" stroke={ring} strokeWidth={3 * s} opacity={0.6} />
+      <g className={pop ? "nav-pop" : undefined}>
+        <circle className="nav-pulse" cx={x} cy={y} r={r + 4 * s} fill="none" stroke={ring} strokeWidth={4 * s} />
         <circle cx={x} cy={y} r={r} fill={color} stroke="#fff" strokeWidth={3.5 * s} />
-        <g>
-          <rect
-            x={x - 70 * s} y={y - r - 44 * s} width={140 * s} height={32 * s} rx={8 * s}
-            fill={color} opacity={0.95}
-          />
-          <text x={x} y={y - r - 22 * s} textAnchor="middle" fontSize={20 * s} fontWeight={800} fill="#fff">
-            {label}
-          </text>
-        </g>
+        <rect x={x - 70 * s} y={y - r - 44 * s} width={140 * s} height={32 * s} rx={8 * s} fill={color} opacity={0.95} />
+        <text x={x} y={y - r - 22 * s} textAnchor="middle" fontSize={20 * s} fontWeight={800} fill="#fff">{label}</text>
         {sub && (
-          <text x={x} y={y + r + 30 * s} textAnchor="middle" fontSize={22 * s} fontWeight={800} fill={color} stroke="#fff" strokeWidth={0.5 * s}>
-            {sub}
-          </text>
+          <text x={x} y={y + r + 30 * s} textAnchor="middle" fontSize={22 * s} fontWeight={800} fill={dark ? "#cdd9f5" : color} stroke={dark ? "#0a1020" : "#fff"} strokeWidth={0.6 * s} paintOrder="stroke">{sub}</text>
         )}
       </g>
     );
   };
 
+  // подсветка тёмной темы: инвертируем план → тёмный фон, светлые стены, цвета сохранены
+  const imgFilter = dark ? "invert(0.9) hue-rotate(180deg) brightness(0.95) contrast(1.05)" : "none";
+
   return (
-    <svg
-      viewBox={`0 0 ${meta.w} ${meta.h}`}
-      preserveAspectRatio="xMidYMid meet"
-      className="w-full h-full"
-      style={{ display: "block" }}
-    >
-      <image href={meta.src} x={0} y={0} width={meta.w} height={meta.h} />
+    <svg viewBox={`0 0 ${meta.w} ${meta.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full" style={{ display: "block" }}>
+      <image key={`${floor}-${dark}`} className="nav-fade" href={meta.src} x={0} y={0} width={meta.w} height={meta.h} style={{ filter: imgFilter }} />
 
-      {/* затемняющая вуаль в тёмной теме, чтобы план не слепил */}
-      {dark && <rect x={0} y={0} width={meta.w} height={meta.h} fill="#0b1220" opacity={0.18} />}
-
-      {/* Маршрут */}
+      {/* Маршрут: сплошная линия + бегущие штрихи поверх */}
       {view.routePts && (
-        <>
-          <polyline
-            points={polyStr(view.routePts)}
-            fill="none"
-            stroke={view.ROUTE}
-            strokeWidth={view.stroke}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.95}
-          />
+        <g className="nav-fade">
+          <polyline points={polyStr(view.routePts)} fill="none" stroke={view.ROUTE} strokeWidth={view.stroke} strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />
+          <polyline className="nav-route-flow" points={polyStr(view.routePts)} fill="none" stroke={dark ? "#bae6fd" : "#ffffff"} strokeWidth={view.stroke * 0.42} strokeLinecap="round" strokeDasharray="10 22" opacity={0.95} />
           {arrowsAlong(view.routePts, 170 * s).map((p, i) => (
             <g key={i} transform={`translate(${p.x},${p.y}) rotate(${p.a})`}>
-              <polygon
-                points={`0,0 ${-view.arrowSize},${-view.arrowSize * 0.6} ${-view.arrowSize},${view.arrowSize * 0.6}`}
-                fill="#fff"
-                stroke={view.ROUTE}
-                strokeWidth={2 * s}
-                transform={`translate(${view.arrowSize * 0.5},0)`}
-              />
+              <polygon points={`0,0 ${-view.arrowSize},${-view.arrowSize * 0.6} ${-view.arrowSize},${view.arrowSize * 0.6}`} fill="#fff" stroke={view.ROUTE} strokeWidth={2 * s} transform={`translate(${view.arrowSize * 0.5},0)`} />
             </g>
           ))}
-        </>
+        </g>
       )}
 
-      {/* «ВЫ ЗДЕСЬ» на 1 этаже */}
-      {floor === 1 && (
-        <Marker x={NAV.KIOSK[0]} y={NAV.KIOSK[1]} label="ВЫ ЗДЕСЬ" color="#16a34a" ring="#22c55e" />
-      )}
+      {floor === 1 && <Marker x={NAV.KIOSK[0]} y={NAV.KIOSK[1]} label="ВЫ ЗДЕСЬ" color="#16a34a" ring="#22c55e" />}
 
-      {/* Цель */}
-      {view.target && (
-        <Marker x={view.target[0]} y={view.target[1]} label="ЦЕЛЬ" sub={targetRoom || undefined} color="#2563eb" ring="#3b82f6" />
-      )}
+      {view.target && <Marker key={`t-${targetRoom}-${floor}`} x={view.target[0]} y={view.target[1]} label="ЦЕЛЬ" sub={targetRoom || undefined} color="#2563eb" ring="#3b82f6" pop />}
 
-      {/* Лестница: «Поднимитесь на N этаж» (кликабельно) */}
       {view.stair && (
-        <g style={{ cursor: "pointer" }} onClick={() => onStairClick(view.stair!.toFloor)}>
-          <circle cx={view.stair.at[0]} cy={view.stair.at[1]} r={23 * s + 4 * s} fill="none" stroke="#ffa726" strokeWidth={3 * s} />
+        <g className="nav-pop" style={{ cursor: "pointer" }} onClick={() => onStairClick(view.stair!.toFloor)}>
+          <circle className="nav-pulse" cx={view.stair.at[0]} cy={view.stair.at[1]} r={23 * s + 4 * s} fill="none" stroke="#ffa726" strokeWidth={4 * s} />
           <circle cx={view.stair.at[0]} cy={view.stair.at[1]} r={23 * s} fill="#ff9800" stroke="#fff" strokeWidth={3.5 * s} />
-          <rect
-            x={view.stair.at[0] - 150 * s} y={view.stair.at[1] - 23 * s - 50 * s}
-            width={300 * s} height={36 * s} rx={10 * s} fill="#ea580c"
-          />
-          <text x={view.stair.at[0]} y={view.stair.at[1] - 23 * s - 25 * s} textAnchor="middle" fontSize={22 * s} fontWeight={800} fill="#fff">
-            ↑ Поднимитесь на {view.stair.toFloor} этаж
-          </text>
+          <rect x={view.stair.at[0] - 150 * s} y={view.stair.at[1] - 23 * s - 50 * s} width={300 * s} height={36 * s} rx={10 * s} fill="#ea580c" />
+          <text x={view.stair.at[0]} y={view.stair.at[1] - 23 * s - 25 * s} textAnchor="middle" fontSize={22 * s} fontWeight={800} fill="#fff">↑ Поднимитесь на {view.stair.toFloor} этаж</text>
         </g>
       )}
     </svg>

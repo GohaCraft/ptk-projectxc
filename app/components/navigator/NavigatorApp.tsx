@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCcw, Sun, Moon, MapPin, Layers, Delete, Navigation2 } from "lucide-react";
 import { NAV, ROOM_NAMES } from "../data/navigatorData";
 import NavigatorMap from "./NavigatorMap";
+import AmbientBg from "./AmbientBg";
 
 const FLOORS = NAV.floors;
 const IDLE_MS = 60_000; // авто-сброс при бездействии
@@ -128,14 +129,15 @@ export default function NavigatorApp() {
             {matches.length === 0 && (
               <div className="text-center text-sm py-6" style={{ color: T.sub }}>Ничего не найдено</div>
             )}
-            {matches.map((room) => {
+            {matches.map((room, i) => {
               const active = room === target;
               return (
                 <button
                   key={room}
                   onClick={() => selectRoom(room)}
-                  className="flex items-center justify-between px-4 rounded-xl text-left transition-colors active:scale-[0.99]"
+                  className="nav-slide-in flex items-center justify-between px-4 rounded-xl text-left transition-colors active:scale-[0.99]"
                   style={{
+                    animationDelay: `${Math.min(i, 12) * 28}ms`,
                     minHeight: 48,
                     background: active ? T.chipActive : T.chip,
                     color: active ? "#fff" : T.text,
@@ -160,17 +162,24 @@ export default function NavigatorApp() {
             </button>
             <button
               onClick={() => setDark((d) => !d)}
-              className="flex items-center justify-center gap-2 rounded-xl font-bold transition-transform active:scale-95 px-4"
-              style={{ height: 50, background: T.chip, color: T.text, border: `1px solid ${T.border}` }}
+              aria-label={dark ? "Светлая тема" : "Тёмная тема"}
+              title={dark ? "Светлая тема" : "Тёмная тема"}
+              className="flex items-center justify-center rounded-xl transition-transform active:scale-90"
+              style={{ width: 50, height: 50, background: T.chip, color: dark ? "#fbbf24" : "#6366f1", border: `1px solid ${T.border}` }}
             >
-              {dark ? <Sun size={18} /> : <Moon size={18} />}
-              {dark ? "Светлая" : "Тёмная"}
+              <span className="nav-theme-icon" style={{ display: "inline-flex", transform: dark ? "rotate(180deg)" : "rotate(0deg)" }}>
+                {dark ? <Sun size={22} /> : <Moon size={22} />}
+              </span>
             </button>
           </div>
         </div>
 
         {/* ── Карта ── */}
-        <div className="relative flex-1 min-w-0" style={{ background: dark ? "#0a1020" : "#e7edf4" }}>
+        <div className="relative flex-1 min-w-0 overflow-hidden">
+          <AmbientBg dark={dark} />
+          <div className="absolute inset-0 z-[1]">
+            <NavigatorMap floor={floor} targetRoom={target} onStairClick={setFloor} dark={dark} />
+          </div>
           {/* Переключатель этажей сверху */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-2 py-2 rounded-2xl shadow-xl" style={{ background: T.side, border: `1px solid ${T.border}` }}>
             <span className="text-xs font-bold uppercase tracking-wider px-2 flex items-center gap-1" style={{ color: T.sub }}><Layers size={14} /> Этаж</span>
@@ -201,8 +210,6 @@ export default function NavigatorApp() {
               <span className="text-base font-semibold" style={{ color: T.text }}>{hint}</span>
             </div>
           )}
-
-          <NavigatorMap floor={floor} targetRoom={target} onStairClick={setFloor} dark={dark} />
         </div>
       </div>
     </div>
