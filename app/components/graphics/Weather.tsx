@@ -2,7 +2,7 @@
 
 import React, { useRef, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { weatherState } from "../data/weatherState";
 
 /* --------------------------------------------------------------
@@ -197,6 +197,53 @@ const Lightning = ({ active }: { active: boolean }) => {
   );
 };
 
+/* --------------------------------------------------------------
+   🌫️ Туман — встроенный экспоненциальный туман сцены (FogExp2).
+   Практически бесплатно: считается в шейдерах материалов, без доп.
+   отрисовки. Плотность плавно лерпится по weatherState.fog, цвет —
+   светлый днём / тёмный ночью. Небо/облака свой туман не получают
+   (у них собственные шейдеры), поэтому «тонут» только объекты сцены —
+   именно так выглядит настоящий туман: дальние здания растворяются.
+----------------------------------------------------------------*/
+const FOG_MAX_DENSITY = 0.018;
+
+const FogController = () => {
+  const { scene } = useThree();
+  const target = useRef({ fog: weatherState.fog, isNight: weatherState.isNight });
+  const fogRef = useRef<THREE.FogExp2 | null>(null);
+
+  const dayColor = useMemo(() => new THREE.Color("#c8d2dc"), []);
+  const nightColor = useMemo(() => new THREE.Color("#10141d"), []);
+  const scratch = useMemo(() => new THREE.Color("#c8d2dc"), []);
+
+  useEffect(() => {
+    const unsub = weatherState.subscribe((s) => {
+      target.current.fog = s.fog;
+      target.current.isNight = s.isNight;
+    });
+    return () => { unsub(); };
+  }, []);
+
+  useEffect(() => {
+    const fog = new THREE.FogExp2(0xc8d2dc, 0);
+    scene.fog = fog;
+    fogRef.current = fog;
+    return () => { if (scene.fog === fog) scene.fog = null; };
+  }, [scene]);
+
+  useFrame((_, delta) => {
+    const fog = fogRef.current;
+    if (!fog) return;
+    const d = Math.min(0.05, delta);
+    const targetDensity = Math.max(0, Math.min(1, target.current.fog)) * FOG_MAX_DENSITY;
+    fog.density = THREE.MathUtils.lerp(fog.density, targetDensity, d * 1.8);
+    scratch.copy(target.current.isNight ? nightColor : dayColor);
+    fog.color.lerp(scratch, d * 1.8);
+  });
+
+  return null;
+};
+
 export const WeatherLayer = () => {
   const [weather, setWeather] = useState({
     rain: weatherState.rain,
@@ -221,6 +268,7 @@ export const WeatherLayer = () => {
         windDir={weather.windDir}
       />
       <Lightning active={weather.storm > 0} />
+      <FogController />
     </>
   );
 };
