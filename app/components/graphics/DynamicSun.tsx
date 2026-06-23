@@ -7,7 +7,7 @@ import { Sky, Stars } from "@react-three/drei";
 import SunCalc from "suncalc";
 import { weatherState } from "../data/weatherState";
 import { clearError } from "../data/errorState";
-import { getSeasonalFallback } from "../data/weatherFallback";
+import { getSeasonalFallback, fetchOpenMeteoClient } from "../data/weatherFallback";
 
 // Переиспользуемые scratch-цвета для покадрового лерпа света — без аллокаций в useFrame.
 const _ambientColor = new THREE.Color();
@@ -243,13 +243,27 @@ export default function DynamicSun({
       currentWindDir = current.wind_direction_10m ?? 180;
 
       const code = current.weather_code ?? 0;
-      // дождь
-      if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
-        currentRain = (code === 65 || code === 82) ? 5 : (code === 61 || code === 51) ? 1 : 2;
-      }
-      // снег
-      if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
-        currentSnow = (code === 75 || code === 86) ? 5 : (code === 71) ? 1 : 2;
+
+      if (typeof current.precipitation === 'number') {
+        // Точнее: используем реальные осадки (мм/ч) и температуру — дождь это или
+        // снег и какой силы, а не грубые «корзины» по коду.
+        const precip = current.precipitation;
+        const snowfall = current.snowfall;
+        const temp = current.temperature;
+        const isSnow = (typeof snowfall === 'number' && snowfall > 0) ||
+                       (typeof temp === 'number' && temp <= 0.5 && precip > 0);
+        if (precip > 0) {
+          const intensity = precip < 0.3 ? 1 : precip < 1.5 ? 2 : precip < 4 ? 3 : 5;
+          if (isSnow) currentSnow = intensity; else currentRain = intensity;
+        }
+      } else {
+        // Запасной разбор по коду WMO (если осадки в мм недоступны).
+        if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+          currentRain = (code === 65 || code === 82) ? 5 : (code === 61 || code === 51) ? 1 : 2;
+        }
+        if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
+          currentSnow = (code === 75 || code === 86) ? 5 : (code === 71) ? 1 : 2;
+        }
       }
       // гроза (WMO 95-99) -> молнии + сильный дождь
       if (code >= 95 && code <= 99) {
@@ -280,11 +294,17 @@ export default function DynamicSun({
         applyCurrent(json.current);
         clearError(101);
       } catch (e) {
-        // Нет API (офлайн .exe — маршрут вырезан при экспорте) или нет интернета:
-        // берём правдоподобную сезонную погоду Норильска локально. Это не ошибка —
+        // Нет серверного /api/weather (офлайн .exe — маршрут вырезан при экспорте).
+        // Пытаемся получить РЕАЛЬНУЮ погоду напрямую из Open-Meteo (в Electron CORS
+        // отключён). Если и сети нет — правдоподобный сезонный расчёт. В любом случае
         // сцена получает корректные данные, поэтому плашку ошибки убираем.
-        console.warn("[DynamicSun] Живая погода недоступна, используем локальный сезонный расчёт.", e);
-        applyCurrent(getSeasonalFallback().current);
+        const direct = await fetchOpenMeteoClient();
+        if (direct) {
+          applyCurrent(direct.current);
+        } else {
+          console.warn("[DynamicSun] Живая погода недоступна, используем локальный сезонный расчёт.", e);
+          applyCurrent(getSeasonalFallback().current);
+        }
         clearError(101);
       }
     };
