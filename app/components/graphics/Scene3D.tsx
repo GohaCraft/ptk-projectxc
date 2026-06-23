@@ -153,6 +153,7 @@ export interface Scene3DProps {
   onWallMove: (id: string, nextX: number, nextZ: number) => void;
   firstFrameReady: boolean;
   setFirstFrameReady: (val: boolean) => void;
+  resetSignal?: number;
   selectedZone: InteractiveZone | null;
   setSelectedZone: (zone: InteractiveZone | null) => void;
   lightingMode?: 'noon' | 'sunset' | 'night' | 'realtime';
@@ -189,6 +190,7 @@ export default function Scene3D({
   onWallMove,
   firstFrameReady,
   setFirstFrameReady,
+  resetSignal = 0,
   selectedZone,
   setSelectedZone,
   lightingMode = 'noon',
@@ -1221,7 +1223,7 @@ export default function Scene3D({
           enableRotate={cameraMode === 'orbit' && !isDraggingWall}
           enabled={cameraMode !== 'flight' && !isDraggingWall}
         />
-        <CameraManager controlsRef={controlsRef} activeFloor={activeFloor} cameraMode={cameraMode} selectedZone={selectedZone} />
+        <CameraManager controlsRef={controlsRef} activeFloor={activeFloor} cameraMode={cameraMode} selectedZone={selectedZone} resetSignal={resetSignal} />
         
         <Preload all />
         <FrameTracker onReady={() => setFirstFrameReady(true)} />

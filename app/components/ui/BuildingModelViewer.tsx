@@ -11,6 +11,7 @@ import FlightJoystick from './FlightJoystick';
 import StartMenu from './StartMenu';
 import ErrorOverlay from './ErrorOverlay';
 import ZonesLockedMeme from './ZonesLockedMeme';
+import IdleResetOverlay from './IdleResetOverlay';
 import { CustomLoader } from './CustomLoader';
 import WebGLBoundary from './WebGLBoundary';
 import { APP_SETTINGS } from '../../config/appSettings';
@@ -42,6 +43,9 @@ export default function BuildingModelViewer() {
   const [activeFloor, setActiveFloor] = useState(6);
   const [hasStarted, setHasStarted] = useState(false);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
+  // Счётчик «жёсткого сброса» камеры: при изменении CameraManager возвращает
+  // камеру/цель в исходную позицию (OrbitControls сам это не делает).
+  const [resetSignal, setResetSignal] = useState(0);
 
   // Страховка: если «первый кадр» не отметился (на некоторых браузерах/GPU
   // useFrame может не успеть до скрытия лоадера), всё равно показываем сцену,
@@ -106,6 +110,8 @@ export default function BuildingModelViewer() {
     setAuditState('idle');
     setAuditProgress(0);
     setAuditLogs([]);
+    // Жёсткий возврат камеры в исходную позицию/цель (иначе остаётся где была)
+    setResetSignal((s) => s + 1);
   };
 
   useEffect(() => {
@@ -824,6 +830,7 @@ export default function BuildingModelViewer() {
           onWallMove={handleWallMoveIn3D}
           firstFrameReady={firstFrameReady}
           setFirstFrameReady={setFirstFrameReady}
+          resetSignal={resetSignal}
           selectedZone={selectedZone}
           setSelectedZone={(zone) => {
             setSelectedZone(zone);
@@ -953,6 +960,9 @@ export default function BuildingModelViewer() {
 
       {/* Экранный джойстик для режима «Облёт» (киоск без клавиатуры) */}
       {hasStarted && !selectedZone && cameraMode === 'flight' && <FlightJoystick />}
+
+      {/* Авто-возврат на стартовый экран при бездействии (2 мин -> отсчёт 10с) */}
+      <IdleResetOverlay active={hasStarted} onTimeout={handlePowerOff} />
 
       {/* Cyberpunk floor selector overlay */}
       {hasStarted && (

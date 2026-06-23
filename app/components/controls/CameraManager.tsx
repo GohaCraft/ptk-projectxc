@@ -13,6 +13,7 @@ interface CameraManagerProps {
   activeFloor?: number;
   cameraMode?: 'orbit' | 'top' | 'flight';
   selectedZone?: InteractiveZone | null;
+  resetSignal?: number;
 }
 
 const getFloorHeight = (floor: number) => {
@@ -56,7 +57,7 @@ function firstVisibleHit(hits: THREE.Intersection[]): THREE.Intersection | null 
   return null;
 }
 
-export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 5, cameraMode = 'orbit', selectedZone = null }: CameraManagerProps) {
+export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 5, cameraMode = 'orbit', selectedZone = null, resetSignal = 0 }: CameraManagerProps) {
   const { camera, scene } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
 
@@ -214,6 +215,30 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
   const startControlsTarget = useRef<THREE.Vector3>(new THREE.Vector3());
   const endCameraPos = useRef<THREE.Vector3>(new THREE.Vector3());
   const endControlsTarget = useRef<THREE.Vector3>(new THREE.Vector3());
+
+  // Жёсткий сброс камеры по сигналу (кнопка выключения / авто-возврат по простою).
+  // OrbitControls сам не возвращается в исходную позицию — делаем это явно.
+  useEffect(() => {
+    if (resetSignal === 0) return; // 0 — начальное значение, на маунте не трогаем
+    const controls = controlsRef.current;
+    isTransitioning.current = false;
+    transitionProgress.current = 0;
+    yaw.current = 0;
+    pitch.current = 0;
+    camera.up.set(0, 1, 0);
+    camera.position.set(0, 15, 45);
+    if (controls) {
+      controls.target.set(0, 4, 0);
+      controls.update();
+    } else {
+      camera.lookAt(0, 4, 0);
+    }
+    // Синхронизируем «предыдущие» значения, чтобы эффект перехода не дёргал камеру
+    prevActiveFloor.current = activeFloor;
+    prevCameraMode.current = cameraMode;
+    prevSelectedZone.current = selectedZone;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal]);
 
   // Trigger transition when activeFloor, cameraMode or selectedZone changes
   useEffect(() => {
