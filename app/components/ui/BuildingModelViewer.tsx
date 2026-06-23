@@ -67,7 +67,6 @@ export default function BuildingModelViewer() {
   // только внутри эффекта и не влияет на рендер.
   const fpsHistoryRef = useRef<number[]>([]);
   const [optimizationNotice, setOptimizationNotice] = useState<string | null>(null);
-  const [weatherData, setWeatherData] = useState<any>(null);
   const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>(
     APP_SETTINGS.weatherByApi ? 'auto' : 'clear'
   );
@@ -129,29 +128,6 @@ export default function BuildingModelViewer() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const fetchWeather = async () => {
-      try {
-        const res = await fetch("/api/weather");
-        if (res.ok && active) {
-          const json = await res.json();
-          setWeatherData(json);
-        }
-        clearError(102);
-      } catch (err) {
-        console.warn("Failed to fetch weather in UI:", err);
-        reportError(102);
-      }
-    };
-    fetchWeather();
-    const interval = setInterval(fetchWeather, 4 * 60 * 1000); // 4 минутный интервал
-    return () => {
-      active = false;
-      clearInterval(interval);
     };
   }, []);
 

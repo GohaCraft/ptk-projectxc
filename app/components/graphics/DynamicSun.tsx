@@ -6,7 +6,8 @@ import { useFrame } from "@react-three/fiber";
 import { Sky, Stars } from "@react-three/drei";
 import SunCalc from "suncalc";
 import { weatherState } from "../data/weatherState";
-import { reportError, clearError } from "../data/errorState";
+import { clearError } from "../data/errorState";
+import { getSeasonalFallback } from "../data/weatherFallback";
 
 // Переиспользуемые scratch-цвета для покадрового лерпа света — без аллокаций в useFrame.
 const _ambientColor = new THREE.Color();
@@ -232,47 +233,59 @@ export default function DynamicSun({
     let currentWindSpeed = 3.5;
     let currentWindDir = 180;
 
+    // Применяет блок current (из API или локального фолбэка) к сцене.
+    const applyCurrent = (current: any) => {
+      currentRain = 0;
+      currentSnow = 0;
+      currentStorm = 0;
+      currentCloudCover = current.cloud_cover ?? 50;
+      currentWindSpeed = current.wind_speed_10m ?? 3.5;
+      currentWindDir = current.wind_direction_10m ?? 180;
+
+      const code = current.weather_code ?? 0;
+      // дождь
+      if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+        currentRain = (code === 65 || code === 82) ? 5 : (code === 61 || code === 51) ? 1 : 2;
+      }
+      // снег
+      if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
+        currentSnow = (code === 75 || code === 86) ? 5 : (code === 71) ? 1 : 2;
+      }
+      // гроза (WMO 95-99) -> молнии + сильный дождь
+      if (code >= 95 && code <= 99) {
+        currentStorm = 1;
+        currentRain = Math.max(currentRain, 5);
+        currentCloudCover = 100;
+      }
+
+      if (isMounted && !weatherState.manual) {
+        setData((prev) => ({
+          ...prev,
+          cloudCover: currentCloudCover,
+          rain: currentRain,
+          snow: currentSnow,
+          storm: currentStorm,
+          windSpeed: currentWindSpeed,
+          windDir: currentWindDir,
+        }));
+      }
+    };
+
     const fetchWeather = async () => {
       try {
         const res = await fetch("/api/weather");
         if (!res.ok) throw new Error(`Weather API returned ${res.status}`);
         const json = await res.json();
-        if (json?.current !== undefined) {
-          currentCloudCover = json.current.cloud_cover ?? 50;
-          currentWindSpeed = json.current.wind_speed_10m ?? 3.5;
-          currentWindDir = json.current.wind_direction_10m ?? 180;
-
-          const code = json.current.weather_code ?? 0;
-          // rain mapping
-          if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
-            currentRain = (code === 65 || code === 82) ? 5 : (code === 61 || code === 51) ? 1 : 2;
-          }
-          // snow mapping
-          if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {
-            currentSnow = (code === 75 || code === 86) ? 5 : (code === 71) ? 1 : 2;
-          }
-          // гроза (WMO 95-99) -> молнии + сильный дождь
-          if (code >= 95 && code <= 99) {
-            currentStorm = 1;
-            currentRain = Math.max(currentRain, 5);
-            currentCloudCover = 100;
-          }
-        }
-        if (isMounted && !weatherState.manual) {
-          setData((prev) => ({
-            ...prev,
-            cloudCover: currentCloudCover,
-            rain: currentRain,
-            snow: currentSnow,
-            storm: currentStorm,
-            windSpeed: currentWindSpeed,
-            windDir: currentWindDir,
-          }));
-        }
+        if (!json?.current) throw new Error("Weather API: no current data");
+        applyCurrent(json.current);
         clearError(101);
       } catch (e) {
-        console.warn("[DynamicSun] Weather API fetch failed. Keeping current state gracefully.", e);
-        reportError(101);
+        // Нет API (офлайн .exe — маршрут вырезан при экспорте) или нет интернета:
+        // берём правдоподобную сезонную погоду Норильска локально. Это не ошибка —
+        // сцена получает корректные данные, поэтому плашку ошибки убираем.
+        console.warn("[DynamicSun] Живая погода недоступна, используем локальный сезонный расчёт.", e);
+        applyCurrent(getSeasonalFallback().current);
+        clearError(101);
       }
     };
 
