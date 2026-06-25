@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { weatherState } from '../data/weatherState';
@@ -30,6 +31,34 @@ type WindowProps = {
   isNight?: boolean;
 };
 
+/**
+ * Качество окон по тиру производительности. Прокидывается из Scene3D через
+ * контекст, чтобы не тащить prop в каждое из сотен окон. На 'low'/'medium'
+ * окно упрощается (дешёвое стекло, без откосов/наличников/отлива).
+ */
+export const WindowQualityContext = React.createContext<'low' | 'medium' | 'high'>('high');
+
+type MergePart =
+  | { type: 'box'; args: [number, number, number]; pos: [number, number, number]; rot?: [number, number, number] }
+  | { type: 'plane'; args: [number, number]; pos: [number, number, number]; rot?: [number, number, number] };
+
+/** Склеивает набор боксов/плоскостей (один материал) в одну геометрию -> 1 draw call. */
+function mergeParts(parts: MergePart[]): THREE.BufferGeometry | null {
+  if (parts.length === 0) return null;
+  const geos = parts.map((p) => {
+    const g: THREE.BufferGeometry =
+      p.type === 'box'
+        ? new THREE.BoxGeometry(p.args[0], p.args[1], p.args[2])
+        : new THREE.PlaneGeometry(p.args[0], p.args[1]);
+    if (p.rot) { g.rotateX(p.rot[0]); g.rotateY(p.rot[1]); g.rotateZ(p.rot[2]); }
+    g.translate(p.pos[0], p.pos[1], p.pos[2]);
+    return g;
+  });
+  const merged = mergeGeometries(geos, false);
+  geos.forEach((g) => g.dispose());
+  return merged;
+}
+
 export const Window: React.FC<WindowProps> = ({
   position,
   rotation = [0, 0, 0],
@@ -38,7 +67,10 @@ export const Window: React.FC<WindowProps> = ({
   isNight = false,
 }) => {
   const [W, H] = size;
+  const tier = React.useContext(WindowQualityContext);
+  const lowDetail = tier !== 'high'; // на слабых ПК — упрощённое окно
   const frameColor = frame === 'white' ? '#F0F0EC' : '#4A2E1B';
+  const casingColor = frame === 'white' ? '#EFEFED' : '#2D1B10';
   const FW = Math.max(0.04, W * 0.04); // Frame thickness
   const D = 0.04; // Depth of frame
   const isTriple = W >= 1.35; // 3-pane for wide windows
@@ -51,9 +83,57 @@ export const Window: React.FC<WindowProps> = ({
     return warm[Math.floor(Math.random() * warm.length)];
   }, []);
 
+  // Рама + импосты + перемычка — один цвет -> склеиваем в одну геометрию (1 меш вместо ~7)
+  const frameGeo = useMemo(() => {
+    const parts: MergePart[] = [
+      { type: 'box', args: [W, FW, D], pos: [0, H / 2 - FW / 2, 0] },
+      { type: 'box', args: [W, FW, D], pos: [0, -H / 2 + FW / 2, 0] },
+      { type: 'box', args: [FW, H - FW * 2, D], pos: [-W / 2 + FW / 2, 0, 0] },
+      { type: 'box', args: [FW, H - FW * 2, D], pos: [W / 2 - FW / 2, 0, 0] },
+    ];
+    if (!isSmallHorizontal) {
+      if (isTriple) {
+        parts.push({ type: 'box', args: [FW, H - FW * 2, D * 0.8], pos: [-W / 6, 0, 0] });
+        parts.push({ type: 'box', args: [FW, H - FW * 2, D * 0.8], pos: [W / 6, 0, 0] });
+      } else {
+        parts.push({ type: 'box', args: [FW, H - FW * 2, D * 0.8], pos: [0, 0, 0] });
+      }
+      parts.push({ type: 'box', args: [W - FW * 2, FW * 0.8, D * 0.7], pos: [0, -H / 4, 0] });
+    }
+    return mergeParts(parts);
+  }, [W, H, FW, D, isTriple, isSmallHorizontal]);
+
+  // Откосы проёма (тёмные) — склеены; на слабых ПК пропускаем
+  const revealGeo = useMemo(() => {
+    if (lowDetail) return null;
+    return mergeParts([
+      { type: 'plane', args: [W, 0.18], pos: [0, H / 2 - 0.005, -0.09], rot: [Math.PI / 2, 0, 0] },
+      { type: 'plane', args: [W, 0.18], pos: [0, -H / 2 + 0.005, -0.09], rot: [Math.PI / 2, 0, 0] },
+      { type: 'plane', args: [0.18, H], pos: [-W / 2 + 0.005, 0, -0.09], rot: [0, Math.PI / 2, 0] },
+      { type: 'plane', args: [0.18, H], pos: [W / 2 - 0.005, 0, -0.09], rot: [0, Math.PI / 2, 0] },
+    ]);
+  }, [W, H, lowDetail]);
+
+  // Наружные наличники — склеены; на слабых ПК пропускаем
+  const casingGeo = useMemo(() => {
+    if (lowDetail) return null;
+    return mergeParts([
+      { type: 'box', args: [W + 0.05, 0.04, 0.03], pos: [0, H / 2 + 0.02, 0.012] },
+      { type: 'box', args: [0.04, H + 0.08, 0.03], pos: [-W / 2 - 0.02, 0, 0.012] },
+      { type: 'box', args: [0.04, H + 0.08, 0.03], pos: [W / 2 + 0.02, 0, 0.012] },
+      { type: 'box', args: [W + 0.05, 0.04, 0.03], pos: [0, -H / 2 - 0.02, 0.012] },
+    ]);
+  }, [W, H, lowDetail]);
+
+  useEffect(() => () => {
+    frameGeo?.dispose();
+    revealGeo?.dispose();
+    casingGeo?.dispose();
+  }, [frameGeo, revealGeo, casingGeo]);
+
   return (
     <group position={position} rotation={rotation}>
-      {/* 1. Глубина комнаты за стеклом — объём внутри помещения */}
+      {/* Глубина комнаты за стеклом (нужна для ночного свечения окон) */}
       <mesh position={[0, 0, -0.18]}>
         <planeGeometry args={[W, H]} />
         <meshStandardMaterial
@@ -63,103 +143,69 @@ export const Window: React.FC<WindowProps> = ({
           roughness={1}
         />
       </mesh>
-      {/* Боковые откосы проёма — добавляют объём */}
-      <mesh position={[0, H/2 - 0.005, -0.09]} rotation={[Math.PI/2, 0, 0]}>
-        <planeGeometry args={[W, 0.18]} />
-        <meshStandardMaterial color="#1a1d20" roughness={1} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, -H/2 + 0.005, -0.09]} rotation={[Math.PI/2, 0, 0]}>
-        <planeGeometry args={[W, 0.18]} />
-        <meshStandardMaterial color="#15181b" roughness={1} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[-W/2 + 0.005, 0, -0.09]} rotation={[0, Math.PI/2, 0]}>
-        <planeGeometry args={[0.18, H]} />
-        <meshStandardMaterial color="#181b1e" roughness={1} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[W/2 - 0.005, 0, -0.09]} rotation={[0, Math.PI/2, 0]}>
-        <planeGeometry args={[0.18, H]} />
-        <meshStandardMaterial color="#181b1e" roughness={1} side={THREE.DoubleSide} />
-      </mesh>
 
-      {/* 2. СТЕКЛО — физически корректное: отражения неба + проход света */}
+      {/* Откосы проёма (тёмные, склеены) */}
+      {revealGeo && (
+        <mesh geometry={revealGeo}>
+          <meshStandardMaterial color="#181b1e" roughness={1} side={THREE.DoubleSide} />
+        </mesh>
+      )}
+
+      {/* СТЕКЛО: на 'high' — физически корректное (transmission/clearcoat);
+          на 'low'/'medium' — дешёвое прозрачное (то же по виду, но без дорогого прохода). */}
       <mesh position={[0, 0, 0]}>
         <planeGeometry args={[W - FW, H - FW]} />
-        <meshPhysicalMaterial
-          color="#afc4cc"
-          transmission={isNight ? 0.2 : 0.6}
-          thickness={0.4}
-          ior={1.45}
-          roughness={0.15}
-          metalness={0.0}
-          reflectivity={0.15}
-          clearcoat={0.5}
-          clearcoatRoughness={0.1}
-          transparent
-          opacity={1}
-          envMapIntensity={0.1}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      {/* 3. Outer Frame */}
-      <group position={[0, 0, 0]}>
-        <mesh position={[0, H/2 - FW/2, 0]} castShadow><boxGeometry args={[W, FW, D]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-        <mesh position={[0, -H/2 + FW/2, 0]} castShadow><boxGeometry args={[W, FW, D]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-        <mesh position={[-W/2 + FW/2, 0, 0]} castShadow><boxGeometry args={[FW, H - FW*2, D]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-        <mesh position={[W/2 - FW/2, 0, 0]} castShadow><boxGeometry args={[FW, H - FW*2, D]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-      </group>
-
-      {/* 4. Vertical dividers (Mullions) */}
-      {!isSmallHorizontal && (
-        isTriple ? (
-          <group position={[0, 0, 0]}>
-            <mesh position={[-W/6, 0, 0]} castShadow><boxGeometry args={[FW, H - FW*2, D * 0.8]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-            <mesh position={[W/6, 0, 0]} castShadow><boxGeometry args={[FW, H - FW*2, D * 0.8]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-          </group>
+        {tier === 'high' ? (
+          <meshPhysicalMaterial
+            color="#afc4cc"
+            transmission={isNight ? 0.2 : 0.6}
+            thickness={0.4}
+            ior={1.45}
+            roughness={0.15}
+            metalness={0.0}
+            reflectivity={0.15}
+            clearcoat={0.5}
+            clearcoatRoughness={0.1}
+            transparent
+            opacity={1}
+            envMapIntensity={0.1}
+            side={THREE.DoubleSide}
+          />
         ) : (
-          <group position={[0, 0, 0]}>
-            <mesh position={[0, 0, 0]} castShadow><boxGeometry args={[FW, H - FW*2, D * 0.8]} /><meshStandardMaterial color={frameColor} roughness={0.6} /></mesh>
-          </group>
-        )
-      )}
-
-      {/* 5. Transom (Horizontal divider) */}
-      {!isSmallHorizontal && (
-        <mesh position={[0, -H/4, 0]} castShadow>
-           <boxGeometry args={[W - FW*2, FW*0.8, D * 0.7]} />
-           <meshStandardMaterial color={frameColor} roughness={0.6} />
-        </mesh>
-      )}
-
-      {/* 6. External window sill (Отлив) */}
-      <mesh position={[0, -H/2, 0.02]} rotation={[0.15, 0, 0]} castShadow>
-        <boxGeometry args={[W + 0.04, 0.015, 0.1]} />
-        <meshStandardMaterial color="#888888" metalness={0.5} roughness={0.6} />
+          <meshStandardMaterial
+            color="#9fb6c0"
+            roughness={0.18}
+            metalness={0.1}
+            transparent
+            opacity={0.6}
+            emissive={(isNight && hasLight) ? roomTint : '#000000'}
+            emissiveIntensity={(isNight && hasLight) ? 0.6 : 0}
+            side={THREE.DoubleSide}
+          />
+        )}
       </mesh>
 
-      {/* 7. Наружные откосы / Наличники (Projecting window surrounds for real depth) */}
-      <group position={[0, 0, 0.012]}>
-        {/* Top casing */}
-        <mesh position={[0, H/2 + 0.02, 0]} castShadow>
-          <boxGeometry args={[W + 0.05, 0.04, 0.03]} />
-          <meshStandardMaterial color={frame === 'white' ? '#EFEFED' : '#2D1B10'} roughness={0.5} />
+      {/* Рама + импосты + перемычка (склеены в одну геометрию) */}
+      {frameGeo && (
+        <mesh geometry={frameGeo} castShadow>
+          <meshStandardMaterial color={frameColor} roughness={0.6} />
         </mesh>
-        {/* Left casing */}
-        <mesh position={[-W/2 - 0.02, 0, 0]} castShadow>
-          <boxGeometry args={[0.04, H + 0.08, 0.03]} />
-          <meshStandardMaterial color={frame === 'white' ? '#EFEFED' : '#2D1B10'} roughness={0.5} />
+      )}
+
+      {/* Наружные наличники (склеены) */}
+      {casingGeo && (
+        <mesh geometry={casingGeo} castShadow>
+          <meshStandardMaterial color={casingColor} roughness={0.5} />
         </mesh>
-        {/* Right casing */}
-        <mesh position={[W/2 + 0.02, 0, 0]} castShadow>
-          <boxGeometry args={[0.04, H + 0.08, 0.03]} />
-          <meshStandardMaterial color={frame === 'white' ? '#EFEFED' : '#2D1B10'} roughness={0.5} />
+      )}
+
+      {/* Отлив — только при полной детализации */}
+      {!lowDetail && (
+        <mesh position={[0, -H / 2, 0.02]} rotation={[0.15, 0, 0]} castShadow>
+          <boxGeometry args={[W + 0.04, 0.015, 0.1]} />
+          <meshStandardMaterial color="#888888" metalness={0.5} roughness={0.6} />
         </mesh>
-        {/* Bottom casing */}
-        <mesh position={[0, -H/2 - 0.02, 0]} castShadow>
-          <boxGeometry args={[W + 0.05, 0.04, 0.03]} />
-          <meshStandardMaterial color={frame === 'white' ? '#EFEFED' : '#2D1B10'} roughness={0.5} />
-        </mesh>
-      </group>
+      )}
     </group>
   );
 };

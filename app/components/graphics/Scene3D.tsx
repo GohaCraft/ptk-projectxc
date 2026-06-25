@@ -34,7 +34,8 @@ import {
   WindowsGroup,
   SlicedRib,
   Staircase,
-  CanopyLights
+  CanopyLights,
+  WindowQualityContext
 } from './ArchitecturalModules';
 
 import ReactPdfFloorOverlay from './ReactPdfFloorOverlay';
@@ -398,6 +399,7 @@ export default function Scene3D({
         {/* Осадки, ветер и молнии грозы */}
         <WeatherLayer />
 
+        <WindowQualityContext.Provider value={perfTier}>
         <group position={[0, 0, 0]}>
 
           {/* ════════════════════════════════════════════════════ */}
@@ -1162,6 +1164,7 @@ export default function Scene3D({
             );
           })}
         </group>
+        </WindowQualityContext.Provider>
 
         {/* ========================================================= */}
         {/* CAD ROBLOX PRECISION ACTIVE FLOOR GRIDS & LASERS        */}
