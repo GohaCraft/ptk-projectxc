@@ -351,9 +351,10 @@ export default function Scene3D({
         shadows={APP_SETTINGS.shadows && perfTier !== 'low'}
         dpr={dpr}
         gl={{
-          // MSAA только на 'high'. На встройке (киоск/слабый ПК) сглаживание —
-          // заметная нагрузка; адаптивный DPR держит картинку приемлемой без него.
-          antialias: perfTier === 'high',
+          // MSAA включено — без него картинка (особенно вид сверху) сильно
+          // пикселит. Производительность добираем сокращением draw calls,
+          // а не ухудшением картинки.
+          antialias: true,
           // 'default' вместо 'high-performance': на слабой интегрированной графике
           // (Core i3 и т.п.) запрос high-performance может срывать создание WebGL-контекста.
           powerPreference: 'default',
@@ -380,9 +381,9 @@ export default function Scene3D({
         {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
         <PerformanceMonitor
           flipflops={3}
-          onDecline={() => setDpr(d => Math.max(0.6, +(d - 0.15).toFixed(2)))}
+          onDecline={() => setDpr(d => Math.max(0.85, +(d - 0.1).toFixed(2)))}
           onIncline={() => setDpr(d => Math.min(maxDpr, +(d + 0.1).toFixed(2)))}
-          onFallback={() => setDpr(0.6)}
+          onFallback={() => setDpr(0.85)}
         />
         <Suspense fallback={null}>
         {perfTier !== 'low' && <ShadowThrottle every={perfTier === 'high' ? 3 : 4} />}

@@ -10,6 +10,7 @@ import WallEditorUI from './WallEditorUI';
 import FlightJoystick from './FlightJoystick';
 import StartMenu from './StartMenu';
 import ErrorOverlay from './ErrorOverlay';
+import UpdateBanner from './UpdateBanner';
 import ZonesLockedMeme from './ZonesLockedMeme';
 import IdleResetOverlay from './IdleResetOverlay';
 import { CustomLoader } from './CustomLoader';
@@ -802,6 +803,9 @@ export default function BuildingModelViewer() {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="model-viewer-layout">
+      {/* Плашка авто-обновления (только в .exe; в вебе ничего не рисует) */}
+      <UpdateBanner />
+
       {/* Offline Status indicator */}
       {!isOnline && (
         <div 

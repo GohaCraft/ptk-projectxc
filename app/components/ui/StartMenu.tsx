@@ -22,26 +22,20 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
       {/* Версии: кнопка (i) + окно «Что нового» — прямо на вступительном экране */}
       <VersionInfo />
 
-      {/* ── Фон: северное сияние (полярная тема Норильска) ───────────────── */}
+      {/* ── Фон: северное сияние (статичное, без покадрового блюра) ──────────
+          Раньше здесь были три огромных blur-[120px] пятна с бесконечной
+          анимацией — полноэкранное гауссово размытие пересчитывалось каждый
+          кадр и роняло FPS меню сильнее, чем сама 3D-сцена. Теперь это
+          статичные радиальные градиенты: выглядят так же, но стоят 0 на кадр. */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        {/* мягкие световые пятна */}
-        <motion.div
-          className="absolute -top-1/3 left-1/2 -translate-x-1/2 w-[120vw] h-[70vh] rounded-full blur-[120px]"
-          style={{ background: 'radial-gradient(closest-side, rgba(56,189,248,0.20), transparent)' }}
-          animate={{ x: ['-52%', '-48%', '-52%'], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute top-[8%] left-[10%] w-[55vw] h-[55vh] rounded-full blur-[130px]"
-          style={{ background: 'radial-gradient(closest-side, rgba(45,212,191,0.16), transparent)' }}
-          animate={{ y: ['-4%', '4%', '-4%'], opacity: [0.35, 0.6, 0.35] }}
-          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute top-[6%] right-[8%] w-[50vw] h-[50vh] rounded-full blur-[130px]"
-          style={{ background: 'radial-gradient(closest-side, rgba(99,102,241,0.16), transparent)' }}
-          animate={{ y: ['4%', '-3%', '4%'], opacity: [0.3, 0.55, 0.3] }}
-          transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(60% 50% at 50% 0%, rgba(56,189,248,0.18), transparent 70%),' +
+              'radial-gradient(45% 45% at 12% 12%, rgba(45,212,191,0.14), transparent 70%),' +
+              'radial-gradient(42% 42% at 88% 10%, rgba(99,102,241,0.14), transparent 70%)',
+          }}
         />
 
         {/* тонкая сетка-перспектива у пола */}

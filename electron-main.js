@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -39,19 +39,18 @@ function setupAutoUpdater() {
     }
   });
 
-  autoUpdater.on('update-downloaded', async (info) => {
+  autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Обновление загружено:', info && info.version);
-    if (!mainWindow) return;
-    const { response } = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      buttons: ['Перезапустить сейчас', 'Позже'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Доступно обновление',
-      message: `Установлена новая версия ${info && info.version}.`,
-      detail: 'Перезапустите приложение, чтобы применить обновление.',
-    });
-    if (response === 0) autoUpdater.quitAndInstall();
+    // Никаких блокирующих нативных окон — отдаём статус в приложение,
+    // оно покажет аккуратную плашку сверху с кнопкой «Перезапустить».
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { state: 'downloaded', version: info && info.version });
+    }
+  });
+
+  // Кнопка «Перезапустить» в плашке приложения присылает это событие.
+  ipcMain.on('update-restart', () => {
+    try { autoUpdater.quitAndInstall(); } catch (e) { console.warn('[Updater] quitAndInstall failed:', e && e.message); }
   });
 
   autoUpdater.on('error', (err) => {
@@ -145,17 +144,37 @@ function startEmbeddedServer() {
       }
     });
 
-    // Binding to port 0 tells Node to automatically request a guaranteed-free random port
-    localServer.listen(0, '127.0.0.1', () => {
-      const assignedPort = localServer.address().port;
-      console.log(`[Offline Server] Running on port ${assignedPort}`);
-      resolve(assignedPort);
-    });
+    // ВАЖНО: используем ФИКСИРОВАННЫЙ порт, а не 0 (случайный).
+    // При случайном порте origin (http://127.0.0.1:<порт>) менялся каждый запуск,
+    // поэтому localStorage сбрасывался — окно «Что нового» вылезало при каждом
+    // старте, а сохранённые стены/тема/настройки терялись. Фикс-порт даёт
+    // стабильный origin → данные сохраняются между запусками.
+    const FIXED_PORT = 38217;
+    const tryListen = (port, triesLeft) => {
+      localServer.listen(port, '127.0.0.1', () => {
+        const assignedPort = localServer.address().port;
+        console.log(`[Offline Server] Running on port ${assignedPort}`);
+        resolve(assignedPort);
+      });
+    };
 
     localServer.on('error', (err) => {
+      // Если фикс-порт занят — берём случайный (origin изменится, но приложение
+      // хотя бы запустится). В норме порт свободен.
+      if (err && err.code === 'EADDRINUSE') {
+        console.warn(`[Offline Server] Порт ${FIXED_PORT} занят — беру случайный.`);
+        localServer.listen(0, '127.0.0.1', () => {
+          const assignedPort = localServer.address().port;
+          console.log(`[Offline Server] Running on fallback port ${assignedPort}`);
+          resolve(assignedPort);
+        });
+        return;
+      }
       console.error('Server error:', err);
       reject(err);
     });
+
+    tryListen(FIXED_PORT);
   });
 }
 
@@ -169,6 +188,7 @@ function createWindow(port) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false, // Prevents any iframe/cross-origin local loading restrictions
+      preload: path.join(__dirname, 'preload.js'), // мост для статуса авто-обновления
     }
   });
 
