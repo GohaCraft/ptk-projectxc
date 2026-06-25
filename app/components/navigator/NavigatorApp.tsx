@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Search, RotateCcw, Sun, Moon, MapPin, Layers, Delete, Navigation2 } from "lucide-react";
+import { Search, RotateCcw, Sun, Moon, MapPin, Layers, Delete, Navigation2, ArrowLeft } from "lucide-react";
 import { NAV, ROOM_NAMES } from "../data/navigatorData";
 import NavigatorMap from "./NavigatorMap";
 import AmbientBg from "./AmbientBg";
@@ -63,6 +63,13 @@ export default function NavigatorApp() {
       {/* ── Верхняя панель ── */}
       <div className="flex items-center justify-between px-6 shrink-0" style={{ height: 64, background: dark ? "#0d1730" : "#2563eb" }}>
         <div className="flex items-center gap-3 text-white">
+          <button
+            onClick={() => window.location.assign('/')}
+            title="На главную"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 transition-colors font-semibold"
+          >
+            <ArrowLeft size={20} strokeWidth={2.4} /> <span className="hidden md:inline text-sm">На главную</span>
+          </button>
           <Navigation2 size={26} strokeWidth={2.4} />
           <span className="text-2xl font-extrabold tracking-wide">Навигатор</span>
           <span className="text-sm font-medium opacity-80 ml-2 hidden md:inline">Политехнический колледж</span>

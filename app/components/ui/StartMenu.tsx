@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Lock } from 'lucide-react';
+import { ArrowRight, Lock, Navigation2 } from 'lucide-react';
 import { APP_VERSION } from '../data/changelog';
 import VersionInfo from './VersionInfo';
 
@@ -140,6 +140,23 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
             Просмотр 3D модели
           </span>
           <ArrowRight className="relative w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+        </motion.button>
+
+        {/* Переход в Навигатор по кабинетам (отдельный экран /navigator) */}
+        <motion.button
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          transition={{ duration: 0.3, delay: 0.5 }}
+          onClick={() => window.location.assign('/navigator')}
+          className="group mt-4 flex items-center justify-center gap-2.5 pl-6 pr-5 py-3 rounded-xl cursor-pointer
+                     border border-slate-600/40 bg-white/[0.03] text-slate-300 hover:text-white hover:border-teal-300/60 transition-all"
+        >
+          <Navigation2 className="w-4 h-4 text-teal-300" />
+          <span className="text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
+            Навигатор по кабинетам
+          </span>
         </motion.button>
 
         {/* Сообщение о блокировке модели администратором */}
