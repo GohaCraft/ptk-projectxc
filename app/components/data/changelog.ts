@@ -14,11 +14,11 @@ export interface ChangelogEntry {
 }
 
 // Текущая версия приложения = version самого верхнего элемента CHANGELOG.
-export const APP_VERSION = '1.26.0';
+export const APP_VERSION = '1.26.1';
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.26.0',
+    version: '1.26.1',
     date: '25.06.2026',
     title: 'Плавное меню, плашка обновления и качество',
     changes: [
