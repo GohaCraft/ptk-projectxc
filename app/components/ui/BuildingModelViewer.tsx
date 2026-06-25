@@ -67,6 +67,24 @@ export default function BuildingModelViewer() {
   );
   const [autoOptimize] = useState(true);
   const [fps, setFps] = useState(0);
+  const [perfStats, setPerfStats] = useState<{ fps: number; calls: number; tris: number } | null>(null);
+  const [showPerf, setShowPerf] = useState(false);
+
+  // Перф-оверлей (диагностика): включается ?perf=1 в URL или клавишей F8.
+  // По умолчанию выключен — на киоске его не видно.
+  useEffect(() => {
+    try {
+      const on = new URLSearchParams(window.location.search).get('perf') === '1';
+      if (on) { setShowPerf(true); (window as any).__perfDebug = true; }
+    } catch {}
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F8') {
+        setShowPerf((v) => { (window as any).__perfDebug = !v; return !v; });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // История FPS для грубого понижения тира. Ref, а не state: значение нужно
   // только внутри эффекта и не влияет на рендер.
   const fpsHistoryRef = useRef<number[]>([]);
@@ -798,6 +816,23 @@ export default function BuildingModelViewer() {
         </div>
       )}
 
+      {/* Перф-оверлей диагностики (F8 / ?perf=1). Зелёный = хорошо, красный = тяжело. */}
+      {showPerf && perfStats && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[70] pointer-events-none font-mono text-[11px] leading-tight bg-black/80 border border-white/15 rounded-lg px-3 py-2 text-slate-100 shadow-2xl">
+          <span style={{ color: perfStats.fps >= 50 ? '#4ade80' : perfStats.fps >= 30 ? '#facc15' : '#f87171' }}>
+            {perfStats.fps} FPS
+          </span>
+          <span className="text-slate-400"> · </span>
+          <span style={{ color: perfStats.calls <= 200 ? '#4ade80' : perfStats.calls <= 500 ? '#facc15' : '#f87171' }}>
+            {perfStats.calls} draw calls
+          </span>
+          <span className="text-slate-400"> · </span>
+          <span className="text-slate-300">{(perfStats.tris / 1000).toFixed(0)}k tris</span>
+          <span className="text-slate-400"> · </span>
+          <span className="text-sky-300">{perfTier}</span>
+        </div>
+      )}
+
       {/* 3D Model Renderer Canvas — скрыт (opacity 0) до полной готовности,
           чтобы пользователь не видел недогруженную сцену под лоадером */}
       <div
@@ -843,6 +878,7 @@ export default function BuildingModelViewer() {
           }}
           lightingMode={lightingMode}
           onFpsUpdate={setFps}
+          onPerfStats={setPerfStats}
           paused={!hasStarted}
           auditState={auditState}
           auditProgress={auditProgress}
