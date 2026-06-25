@@ -19,6 +19,14 @@ body {
 @keyframes ch-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .ch-badge { background-size: 200% 100%; animation: ch-shimmer 2.6s linear infinite; }
 
+/* ── Стартовое меню: лёгкие анимации (только compositor: transform / background-position,
+   без покадрового blur — в отличие от старого фона, это почти бесплатно для GPU) ── */
+@keyframes menu-orbit { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.menu-orbit { animation: menu-orbit 60s linear infinite; will-change: transform; }
+
+@keyframes menu-text-shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+.menu-text-shimmer { background-size: 200% auto; animation: menu-text-shimmer 7s linear infinite; }
+
 /* ───────────────── НАВИГАТОР: анимации ───────────────── */
 
 /* «Бегущие» штрихи вдоль маршрута — показывают направление движения */
@@ -69,6 +77,7 @@ body {
 .nav-theme-icon { transition: transform 0.5s cubic-bezier(.34,1.56,.64,1); }
 
 @media (prefers-reduced-motion: reduce) {
-  .nav-route-flow, .nav-pulse, .nav-fade, .nav-pop, .nav-slide-in, .nav-blob, .nav-twinkle { animation: none !important; }
+  .nav-route-flow, .nav-pulse, .nav-fade, .nav-pop, .nav-slide-in, .nav-blob, .nav-twinkle,
+  .menu-orbit, .menu-text-shimmer { animation: none !important; }
 }
 

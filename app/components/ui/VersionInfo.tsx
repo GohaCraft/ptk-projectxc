@@ -38,9 +38,11 @@ const TIER_BADGE: Record<Tier, { label: string; grad: string }> = {
 
 function TierBadge({ tier }: { tier: Tier }) {
   const b = TIER_BADGE[tier];
+  // Переливание (анимация) — только у «Текущей»: при большом списке версий
+  // десятки анимированных плашек зря грузили бы кадр. Остальные — статичный градиент.
   return (
     <span
-      className="ch-badge font-mono text-[9px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-full text-white border border-white/20 shadow-[0_0_10px_-2px_rgba(255,255,255,0.35)]"
+      className={`${tier === 'current' ? 'ch-badge' : ''} font-mono text-[9px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded-full text-white border border-white/20 shadow-[0_0_10px_-2px_rgba(255,255,255,0.35)]`}
       style={{ backgroundImage: b.grad }}
     >
       {b.label}
@@ -78,6 +80,9 @@ function EntryCard({ entry, highlight = false }: { entry: ChangelogEntry; highli
 export default function VersionInfo() {
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  // Список версий рисуется не весь сразу (на будущее, когда версий станет много).
+  const [expandedAll, setExpandedAll] = useState(false);
+  const VISIBLE_LIMIT = 6;
 
   // При первом запуске новой версии — авто-окно «Что нового»
   useEffect(() => {
@@ -99,7 +104,7 @@ export default function VersionInfo() {
       {/* Кнопка (i) — история версий */}
       <button
         id="btn_version_info"
-        onClick={() => setShowAll(true)}
+        onClick={() => { setExpandedAll(false); setShowAll(true); }}
         title={`Версия ${APP_VERSION} — история изменений`}
         className="absolute right-4 md:right-6 top-4 md:top-6 z-30 pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center bg-[#0c0d12]/92 backdrop-blur-3xl border border-slate-800/80 shadow-2xl text-slate-300 hover:text-white hover:border-sky-500/70 hover:bg-sky-950/40 transition-all duration-300 cursor-pointer animate-fade-in"
       >
@@ -144,7 +149,7 @@ export default function VersionInfo() {
               </div>
               <div className="px-5 pb-5 flex gap-2">
                 <button
-                  onClick={() => { setShowWhatsNew(false); setShowAll(true); }}
+                  onClick={() => { setShowWhatsNew(false); setExpandedAll(false); setShowAll(true); }}
                   className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Все версии
@@ -193,9 +198,17 @@ export default function VersionInfo() {
                 </button>
               </div>
               <div className="px-5 py-4 overflow-y-auto flex flex-col gap-3 scrollbar-none">
-                {CHANGELOG.map((entry, i) => (
+                {(expandedAll ? CHANGELOG : CHANGELOG.slice(0, VISIBLE_LIMIT)).map((entry, i) => (
                   <EntryCard key={entry.version} entry={entry} highlight={i === 0} />
                 ))}
+                {!expandedAll && CHANGELOG.length > VISIBLE_LIMIT && (
+                  <button
+                    onClick={() => setExpandedAll(true)}
+                    className="mt-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Показать все версии ({CHANGELOG.length})
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>

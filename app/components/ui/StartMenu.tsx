@@ -28,6 +28,15 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
           кадр и роняло FPS меню сильнее, чем сама 3D-сцена. Теперь это
           статичные радиальные градиенты: выглядят так же, но стоят 0 на кадр. */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        {/* Медленно вращающееся «сияние» — compositor-only (transform), дёшево для GPU */}
+        <div
+          className="menu-orbit absolute left-1/2 top-1/2 w-[140vmax] h-[140vmax] opacity-60"
+          style={{
+            transform: 'translate(-50%, -50%)',
+            background:
+              'conic-gradient(from 0deg, transparent 0deg, rgba(56,189,248,0.10) 55deg, transparent 130deg, rgba(45,212,191,0.08) 210deg, transparent 290deg, rgba(99,102,241,0.09) 340deg, transparent 360deg)',
+          }}
+        />
         <div
           className="absolute inset-0"
           style={{
@@ -90,7 +99,7 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
             ЗГУ политехнический
           </span>
           <br className="hidden sm:block" />
-          <span className="font-light bg-gradient-to-r from-sky-300 via-cyan-200 to-teal-300 bg-clip-text text-transparent">
+          <span className="menu-text-shimmer font-light bg-gradient-to-r from-sky-300 via-cyan-200 to-teal-300 bg-clip-text text-transparent">
             колледж
           </span>
         </motion.h1>
