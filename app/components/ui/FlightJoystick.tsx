@@ -8,9 +8,17 @@ const DEAD_ZONE = 0.14;  // мёртвая зона у центра
 
 /**
  * Плавающий экранный джойстик для киоска (без клавиатуры).
- * Работает только в режиме «Облёт». Появляется там, где нажали (кроме меню),
- * исчезает при отпускании. Вертикаль — идти вперёд/назад, горизонталь — поворот.
+ * Работает только в режиме «Облёт». Появляется там, где нажали, — но ТОЛЬКО в
+ * левой/центральной зоне экрана (≈левые 60%). Правые ~40% экрана НЕ перекрыты
+ * этим слоем: нажатия там попадают на 3D-canvas и крутят камеру (обзор «головой»,
+ * см. CameraManager). Так на ПК и на сенсоре можно одновременно идти (слева) и
+ * осматриваться (справа). Джойстик «эластичный»: вызывается слева/по центру, но
+ * тянуть ручку после захвата можно куда угодно (pointer capture).
+ * Вертикаль ручки — идти вперёд/назад, горизонталь — поворот.
  */
+// Доля ширины экрана слева, отданная под джойстик. Остальное справа — обзор.
+const JOY_ZONE_WIDTH = '60%';
+
 export default function FlightJoystick() {
   const [active, setActive] = useState(false);
   const [base, setBase] = useState({ x: 0, y: 0 });
@@ -75,8 +83,8 @@ export default function FlightJoystick() {
       onPointerMove={handleMove}
       onPointerUp={handleUp}
       onPointerCancel={handleUp}
-      className="absolute inset-0 z-[6] touch-none select-none"
-      style={{ pointerEvents: 'auto' }}
+      className="absolute left-0 top-0 bottom-0 z-[6] touch-none select-none"
+      style={{ pointerEvents: 'auto', width: JOY_ZONE_WIDTH }}
     >
       {/* Подсказка, пока джойстик не активен */}
       {!active && (
@@ -86,7 +94,7 @@ export default function FlightJoystick() {
             <span className="absolute -inset-1 rounded-full border border-white/10 animate-ping" />
           </div>
           <span className="px-3 py-1 rounded-full bg-black/45 backdrop-blur-md text-slate-200 text-[10px] font-mono tracking-wide">
-            Нажмите и тяните — движение и поворот
+            Слева — движение · справа — обзор
           </span>
         </div>
       )}
