@@ -843,6 +843,7 @@ export default function BuildingModelViewer() {
           }}
           lightingMode={lightingMode}
           onFpsUpdate={setFps}
+          paused={!hasStarted}
           auditState={auditState}
           auditProgress={auditProgress}
           auditRound={auditRound}

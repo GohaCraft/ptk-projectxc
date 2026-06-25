@@ -158,7 +158,9 @@ export interface Scene3DProps {
   setSelectedZone: (zone: InteractiveZone | null) => void;
   lightingMode?: 'noon' | 'sunset' | 'night' | 'realtime';
   onFpsUpdate?: (fps: number) => void;
-  
+  /** Когда true — цикл рендера приостановлен (меню открыто): сцена не грузит GPU. */
+  paused?: boolean;
+
   // 50-point precision audit fields
   auditState: 'idle' | 'running' | 'success' | 'failed';
   auditProgress: number;
@@ -195,6 +197,7 @@ export default function Scene3D({
   setSelectedZone,
   lightingMode = 'noon',
   onFpsUpdate,
+  paused = false,
   auditState,
   auditProgress,
   auditRound,
@@ -276,10 +279,16 @@ export default function Scene3D({
     <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="3d-scene-container">
       <Canvas
         style={{ width: '100%', height: '100%', display: 'block' }}
+        // Пока открыто меню (paused) — режим 'demand': кадры рендерятся только при
+        // изменениях (загрузка ассетов, первый кадр), а не 60 раз в секунду.
+        // Это снимает нагрузку с GPU и убирает лаги интерфейса на стартовом экране.
+        frameloop={paused ? 'demand' : 'always'}
         shadows={APP_SETTINGS.shadows && perfTier !== 'low'}
         dpr={dpr}
         gl={{
-          antialias: true,
+          // MSAA только на 'high'. На встройке (киоск/слабый ПК) сглаживание —
+          // заметная нагрузка; адаптивный DPR держит картинку приемлемой без него.
+          antialias: perfTier === 'high',
           // 'default' вместо 'high-performance': на слабой интегрированной графике
           // (Core i3 и т.п.) запрос high-performance может срывать создание WebGL-контекста.
           powerPreference: 'default',
@@ -296,17 +305,19 @@ export default function Scene3D({
           if (isEditMode && !isDraggingWall) setSelectedWallId(null);
         }}
       >
-        {/* Мягкие тени (PCSS) на medium и high — умеренное число выборок: глазом
-            не отличить от 16, но в 2–3 раза дешевле. */}
-        {APP_SETTINGS.shadows && perfTier !== 'low' && (
-          <SoftShadows size={perfTier === 'high' ? 18 : 12} samples={perfTier === 'high' ? 8 : 5} focus={0.9} />
+        {/* Мягкие тени (PCSS) — ТОЛЬКО на 'high'. PCSS-проход очень дорогой и был
+            главной причиной просадок на встроенной графике (киоск, слабые ПК).
+            На 'medium' используются стандартные PCF-тени (по умолчанию в R3F) —
+            выглядят почти так же, но в разы дешевле. */}
+        {APP_SETTINGS.shadows && perfTier === 'high' && (
+          <SoftShadows size={12} samples={5} focus={0.9} />
         )}
         {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
         <PerformanceMonitor
           flipflops={3}
-          onDecline={() => setDpr(d => Math.max(0.85, +(d - 0.15).toFixed(2)))}
+          onDecline={() => setDpr(d => Math.max(0.6, +(d - 0.15).toFixed(2)))}
           onIncline={() => setDpr(d => Math.min(maxDpr, +(d + 0.1).toFixed(2)))}
-          onFallback={() => setDpr(0.85)}
+          onFallback={() => setDpr(0.6)}
         />
         <Suspense fallback={null}>
         {perfTier !== 'low' && <ShadowThrottle every={perfTier === 'high' ? 3 : 4} />}
