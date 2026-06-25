@@ -14,9 +14,17 @@ export interface ChangelogEntry {
 }
 
 // Текущая версия приложения = version самого верхнего элемента CHANGELOG.
-export const APP_VERSION = '1.27.0';
+export const APP_VERSION = '1.27.1';
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.27.1',
+    date: '25.06.2026',
+    title: 'Оптимизация: склейка повторов оболочки',
+    changes: [
+      'Пилястры и оконные ниши центрального корпуса (по ~46 деталей на этаж) склеены в единые детали — меньше команд видеокарте, тот же вид. Продолжаем убирать «тысячи мелких кусочков».',
+    ],
+  },
   {
     version: '1.27.0',
     date: '25.06.2026',

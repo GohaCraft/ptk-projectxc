@@ -5,11 +5,35 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { CustomWall, CustomWallItem } from './CustomWalls';
 import { FloorSlice } from './FloorSlice';
+import { mergeBoxes, BoxPart } from './geometryMerge';
 import {
   B1FloorBlueprintMaterial,
   BFloorBlueprintMaterial,
   B2FloorBlueprintMaterial
 } from './ArchitecturalModules';
+
+/**
+ * MergedBoxes — рисует набор одинаковых по материалу боксов ОДНИМ мешем
+ * (геометрии склеены), вместо десятков отдельных <mesh>. Тот же вид, но
+ * один draw call. geoKey пересобирает геометрию при смене этажа/размеров.
+ */
+const MergedBoxes: React.FC<{
+  geoKey: string;
+  boxes: BoxPart[];
+  MaterialComponent: any;
+  repArgs: [number, number, number];
+  opacity: number;
+}> = ({ geoKey, boxes, MaterialComponent, repArgs, opacity }) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const geo = useMemo(() => mergeBoxes(boxes), [geoKey]);
+  useEffect(() => () => { geo?.dispose(); }, [geo]);
+  if (!geo) return null;
+  return (
+    <mesh geometry={geo} castShadow receiveShadow>
+      <MaterialComponent args={repArgs} transparent={opacity < 1.0} opacity={opacity} />
+    </mesh>
+  );
+};
 
 interface InteriorLayoutProps {
   cx: number;
@@ -215,33 +239,27 @@ export const SlicedWall = ({
                      <boxGeometry args={[3.65, floorH, t]} />
                      <MaterialComponent args={[3.65, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
                    </mesh>
-                   {/* Межблочные пилястры/колонны */}
-                   {[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX, idx) => (
-                     <mesh key={`pier-n-${idx}`} castShadow receiveShadow position={[pX, floorY, cz - d/2 + t/2]}>
-                       <boxGeometry args={[0.58, floorH, t]} />
-                       <MaterialComponent args={[0.58, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
-                   {/* Ниши под окна (утопленные назад) */}
-                   {[
-                     { cx: -10.083, w: 1.548 },
-                     { cx: -8.25,   w: 1.253 },
-                     { cx: -6.417,  w: 1.253 },
-                     { cx: -4.583,  w: 1.253 },
-                     { cx: -2.75,   w: 1.253 },
-                     { cx: -0.917,  w: 1.253 },
-                     { cx: 0.917,   w: 1.253 },
-                     { cx: 2.75,    w: 1.253 },
-                     { cx: 4.583,   w: 1.253 },
-                     { cx: 6.417,   w: 1.253 },
-                     { cx: 8.25,    w: 1.253 },
-                     { cx: 10.083,  w: 1.548 },
-                   ].map((bay, idx) => (
-                     <mesh key={`bay-n-${idx}`} castShadow receiveShadow position={[bay.cx, floorY, cz - d/2 + t - 0.2]}>
-                       <boxGeometry args={[bay.w, floorH, 0.4]} />
-                       <MaterialComponent args={[bay.w, floorH, 0.4]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
+                   {/* Межблочные пилястры/колонны (склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`pier-n-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX) => ({ args: [0.58, floorH, t], pos: [pX, floorY, cz - d / 2 + t / 2] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[0.58, floorH, t]}
+                     opacity={outerOp}
+                   />
+                   {/* Ниши под окна (утопленные назад, склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`bay-n-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[
+                       { cx: -10.083, w: 1.548 }, { cx: -8.25, w: 1.253 }, { cx: -6.417, w: 1.253 },
+                       { cx: -4.583, w: 1.253 }, { cx: -2.75, w: 1.253 }, { cx: -0.917, w: 1.253 },
+                       { cx: 0.917, w: 1.253 }, { cx: 2.75, w: 1.253 }, { cx: 4.583, w: 1.253 },
+                       { cx: 6.417, w: 1.253 }, { cx: 8.25, w: 1.253 }, { cx: 10.083, w: 1.548 },
+                     ].map((bay) => ({ args: [bay.w, floorH, 0.4] as [number, number, number], pos: [bay.cx, floorY, cz - d / 2 + t - 0.2] as [number, number, number] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[1.253, floorH, 0.4]}
+                     opacity={outerOp}
+                   />
                  </group>
                ) : (
                  <mesh castShadow receiveShadow position={[cx, floorY, cz - d/2 + t/2]}>
@@ -265,33 +283,27 @@ export const SlicedWall = ({
                      <boxGeometry args={[3.65, floorH, t]} />
                      <MaterialComponent args={[3.65, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
                    </mesh>
-                   {/* Межблочные пилястры/колонны */}
-                   {[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX, idx) => (
-                     <mesh key={`pier-s-${idx}`} castShadow receiveShadow position={[pX, floorY, cz + d/2 - t/2]}>
-                       <boxGeometry args={[0.58, floorH, t]} />
-                       <MaterialComponent args={[0.58, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
-                   {/* Ниши под окна (утопленные внутрь) */}
-                   {[
-                     { cx: -10.083, w: 1.548 },
-                     { cx: -8.25,   w: 1.253 },
-                     { cx: -6.417,  w: 1.253 },
-                     { cx: -4.583,  w: 1.253 },
-                     { cx: -2.75,   w: 1.253 },
-                     { cx: -0.917,  w: 1.253 },
-                     { cx: 0.917,   w: 1.253 },
-                     { cx: 2.75,    w: 1.253 },
-                     { cx: 4.583,   w: 1.253 },
-                     { cx: 6.417,   w: 1.253 },
-                     { cx: 8.25,    w: 1.253 },
-                     { cx: 10.083,  w: 1.548 },
-                   ].map((bay, idx) => (
-                     <mesh key={`bay-s-${idx}`} castShadow receiveShadow position={[bay.cx, floorY, cz + d/2 - t + 0.2]}>
-                       <boxGeometry args={[bay.w, floorH, 0.4]} />
-                       <MaterialComponent args={[bay.w, floorH, 0.4]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
+                   {/* Межблочные пилястры/колонны (склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`pier-s-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX) => ({ args: [0.58, floorH, t], pos: [pX, floorY, cz + d / 2 - t / 2] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[0.58, floorH, t]}
+                     opacity={outerOp}
+                   />
+                   {/* Ниши под окна (утопленные внутрь, склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`bay-s-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[
+                       { cx: -10.083, w: 1.548 }, { cx: -8.25, w: 1.253 }, { cx: -6.417, w: 1.253 },
+                       { cx: -4.583, w: 1.253 }, { cx: -2.75, w: 1.253 }, { cx: -0.917, w: 1.253 },
+                       { cx: 0.917, w: 1.253 }, { cx: 2.75, w: 1.253 }, { cx: 4.583, w: 1.253 },
+                       { cx: 6.417, w: 1.253 }, { cx: 8.25, w: 1.253 }, { cx: 10.083, w: 1.548 },
+                     ].map((bay) => ({ args: [bay.w, floorH, 0.4] as [number, number, number], pos: [bay.cx, floorY, cz + d / 2 - t + 0.2] as [number, number, number] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[1.253, floorH, 0.4]}
+                     opacity={outerOp}
+                   />
                  </group>
                ) : (
                  <mesh castShadow receiveShadow position={[cx, floorY, cz + d/2 - t/2]}>
