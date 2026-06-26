@@ -169,6 +169,62 @@ function SkyClouds({
 
 
 /* ------------------------------------------------------------------
+   SunDisc – настоящий видимый «диск» солнца со светящимся ореолом.
+   Билборд (sprite) всегда повёрнут к камере, стоит ровно в той точке,
+   где небо (drei <Sky>) считает солнце (skyPosRef) — поэтому диск и
+   свечение неба совпадают, нет «двух солнц». Ночью плавно гаснет.
+   ------------------------------------------------------------------ */
+function SunDisc({
+  skyPosRef,
+  isNight,
+}: {
+  skyPosRef: React.MutableRefObject<THREE.Vector3>;
+  isNight: boolean;
+}) {
+  const ref = useRef<THREE.Sprite>(null);
+  const tex = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.0, "rgba(255,255,250,1)");   // яркое ядро
+    g.addColorStop(0.16, "rgba(255,250,228,0.96)");
+    g.addColorStop(0.34, "rgba(255,232,178,0.5)"); // тёплый ореол
+    g.addColorStop(1.0, "rgba(255,224,168,0)");    // мягко в ноль
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+
+  useFrame(() => {
+    const s = ref.current;
+    if (!s || !skyPosRef.current) return;
+    // ставим диск по направлению на солнце, на фиксированном расстоянии
+    s.position.copy(skyPosRef.current).normalize().multiplyScalar(340);
+    const target = isNight ? 0 : 1;
+    const m = s.material as THREE.SpriteMaterial;
+    m.opacity += (target - m.opacity) * 0.08;
+    s.visible = m.opacity > 0.02;
+  });
+
+  if (!tex) return null;
+  return (
+    <sprite ref={ref} scale={[54, 54, 1]}>
+      <spriteMaterial
+        map={tex}
+        transparent
+        opacity={0}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </sprite>
+  );
+}
+
+/* ------------------------------------------------------------------
    DynamicSun – updates sun position, sky colour, ambient light,
    and coordinates smooth transitions to prevent any lighting pops.
    ------------------------------------------------------------------ */
@@ -520,6 +576,9 @@ export default function DynamicSun({
         mieCoefficient={0.0015}
         mieDirectionalG={0.97}
       />
+
+      {/* Видимый диск солнца (совпадает с точкой солнца неба) */}
+      <SunDisc skyPosRef={currentSkyPosRef} isNight={data.isNight} />
 
       {/* Atmospheric Overcast Overlay & Procedural Volumetric Clouds */}
       <SkyClouds
