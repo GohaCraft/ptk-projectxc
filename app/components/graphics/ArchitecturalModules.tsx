@@ -640,58 +640,6 @@ const SlopeRail = ({ side, run, rise, h = 0.95 }: { side: number; run: number; r
   );
 };
 
-// Один прямой марш: серые ступени + гладкий серый косоур + ограждение.
-// Поднимается вдоль локального +Z, вверх по +Y от 0.
-const StairFlight = ({ steps, riser, tread, width, railSide = 1 }: { steps: number; riser: number; tread: number; width: number; railSide?: 1 | -1 }) => {
-  const run = steps * tread;
-  const rise = steps * riser;
-  const sideShape = useMemo(() => {
-    const s = new THREE.Shape();
-    s.moveTo(0, 0);
-    s.lineTo(run, 0);
-    s.lineTo(run, rise);
-    s.lineTo(0, riser);
-    s.closePath();
-    return s;
-  }, [run, rise, riser]);
-  const sx = (railSide * width) / 2;
-  const arr: any[] = [];
-  for (let i = 0; i < steps; i++) {
-    const top = (i + 1) * riser;
-    const z = i * tread + tread / 2;
-    arr.push(
-      <mesh key={`s-${i}`} castShadow receiveShadow position={[0, top / 2, z]}>
-        <boxGeometry args={[width, top, tread]} />
-        <GreyConcreteMaterial />
-      </mesh>
-    );
-    arr.push(
-      <mesh key={`t-${i}`} receiveShadow position={[0, top + 0.011, z]}>
-        <boxGeometry args={[width, 0.022, tread + 0.02]} />
-        <meshStandardMaterial color="#d9d5cd" roughness={0.7} />
-      </mesh>
-    );
-  }
-  return (
-    <group>
-      {arr}
-      <mesh position={[sx, 0, 0]} rotation={[0, -Math.PI / 2, 0]} castShadow receiveShadow>
-        <extrudeGeometry args={[sideShape, { depth: 0.05, bevelEnabled: false }]} />
-        <PlasterGray />
-      </mesh>
-      <SlopeRail side={sx + railSide * 0.06} run={run} rise={rise} />
-    </group>
-  );
-};
-
-// Г-образная (двухмаршевая) лестница: марш 1 прямо (+Z), площадка,
-// затем поворот НАЛЕВО и марш 2 (вдоль -X) до 2-го этажа.
-
-
-
-// ──────────────────────────────────────────────────────────────────
-//  MURAL MOSAIC & HELPERS
-// ──────────────────────────────────────────────────────────────────
 export const createMuralTexture = () => {
   const c = document.createElement('canvas');
   c.width = 4096;
@@ -1623,41 +1571,6 @@ export const B2FloorBlueprintMaterial = ({ width, depth, floorIdx }: { width: nu
   );
 };
 
-// ──────────────────────────────────────────────────────────────────
-//  BLUEPRINT OVERLAY
-// ──────────────────────────────────────────────────────────────────
-export const BlueprintOverlay = ({ url, opacity, scale, offset, activeFloor, heightOffset = 0 }: { url: string, opacity: number, scale: number, offset: {x: number, z: number}, activeFloor: number, heightOffset?: number }) => {
-  const [tex, setTex] = useState<THREE.Texture | null>(null);
-  useEffect(() => {
-    if (url) {
-      new THREE.TextureLoader().load(url, (loadedTex) => {
-        loadedTex.colorSpace = THREE.SRGBColorSpace;
-        loadedTex.anisotropy = 16;
-        setTex(loadedTex);
-      });
-    } else {
-      setTex(null);
-    }
-  }, [url]);
-
-  if (!tex || activeFloor > 4) return null; // No blueprint for roof (floor 5)
-
-  const floorIdx = activeFloor - 1;
-  // Use the exact floor height of the central block B (baseY = 1.5, floorH = 2.9)
-  // Plus 0.24 so it lies perfectly 2cm above the floor slice floorplan graphics (which are at +0.22)
-  const floorY = 1.5 + floorIdx * 2.9 + 0.24 + heightOffset;
-
-  return (
-    <mesh position={[offset.x, floorY, offset.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[tex.image.width * scale, tex.image.height * scale]} />
-      <meshBasicMaterial map={tex} transparent opacity={opacity} depthWrite={false} color="#ffffff" />
-    </mesh>
-  );
-};
-
-// ──────────────────────────────────────────────────────────────────
-//  ROOFTOP COMPONENT
-// ──────────────────────────────────────────────────────────────────
 export const RoofTop = ({
   position,
   size,
