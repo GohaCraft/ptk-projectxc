@@ -650,22 +650,6 @@ export const BrickMaterial = ({ args, ...props }: { args?: [number, number, numb
   );
 };
 
-export const AkpMaterial = ({ args }: { args?: [number, number, number] }) => {
-  const tex = getProceduralTextures();
-  const args0 = args?.[0];
-  const args1 = args?.[1];
-  const m = useMemo(() => {
-    if (!tex) return null;
-    const mw = tex.akpMap.clone();
-    const repeatX = args0 ? Math.max(1, args0 / 1.5) : 2;
-    const repeatY = args1 ? Math.max(1, args1 / 1.5) : 2;
-    mw.repeat.set(repeatX, repeatY);
-    return mw;
-  }, [tex, args0, args1]);
-  if (!m) return <meshStandardMaterial color="#C2C8CC" metalness={0.3} roughness={0.5} side={THREE.DoubleSide} />;
-  return <meshStandardMaterial map={m} metalness={0.35} roughness={0.5} side={THREE.DoubleSide} />;
-};
-
 export const BeltMaterial = ({ args, ...props }: { args?: [number, number, number], [key: string]: any }) => {
   const tex = getProceduralTextures();
   const args0 = args?.[0];
@@ -680,19 +664,9 @@ export const BeltMaterial = ({ args, ...props }: { args?: [number, number, numbe
   return <meshStandardMaterial map={m} roughness={0.9} side={THREE.DoubleSide} {...props} />;
 };
 
-export const MetalGreyMaterial = () => {
-  const tex = getProceduralTextures();
-  return <meshStandardMaterial color="#cbd5e1" roughnessMap={tex?.metalRoughness} metalness={0.5} roughness={0.5} side={THREE.DoubleSide} />;
-};
-
 export const MetalDarkMaterial = () => {
   const tex = getProceduralTextures();
   return <meshStandardMaterial color="#362923" roughnessMap={tex?.metalRoughness} metalness={0.6} roughness={0.7} side={THREE.DoubleSide} />;
-};
-
-export const RedRailMaterial = () => {
-  const tex = getProceduralTextures();
-  return <meshStandardMaterial color="#8B3A2E" roughnessMap={tex?.metalRoughness} metalness={0.4} roughness={0.6} side={THREE.DoubleSide} />;
 };
 
 export const RampMetalMaterial = () => {
@@ -741,8 +715,6 @@ export const RampFloorMaterial = ({ args }: { args?: [number, number] }) => {
   );
 };
 
-export const SmoothConcreteMaterial = BeltMaterial;
-export const TileMaterial = PanelMaterial;
 
 export const GreyConcreteMaterial = () => (
   <meshStandardMaterial color="#7A7470" roughness={0.92} metalness={0.0} side={THREE.DoubleSide} />

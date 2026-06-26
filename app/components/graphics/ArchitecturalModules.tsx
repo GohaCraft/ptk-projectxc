@@ -686,68 +686,6 @@ const StairFlight = ({ steps, riser, tread, width, railSide = 1 }: { steps: numb
 
 // Г-образная (двухмаршевая) лестница: марш 1 прямо (+Z), площадка,
 // затем поворот НАЛЕВО и марш 2 (вдоль -X) до 2-го этажа.
-export const CentralLobbyStair = ({
-  position,
-  rotation = [0, 0, 0],
-  width = 1.5,
-  rise = 2.9,
-  total = 16,
-  split = 6,
-  tread = 0.3,
-}: {
-  position: [number, number, number];
-  rotation?: [number, number, number];
-  width?: number;
-  rise?: number;
-  total?: number;
-  split?: number;
-  tread?: number;
-}) => {
-  const riser = rise / total;
-  const s1 = split;
-  const s2 = total - split;
-  const run1 = s1 * tread;
-  const run2 = s2 * tread;
-  const yMid = s1 * riser;
-  const W = width;
-  return (
-    <group position={position} rotation={rotation as any}>
-      {/* марш 1 — прямо (+Z) */}
-      <StairFlight steps={s1} riser={riser} tread={tread} width={W} railSide={1} />
-      {/* промежуточная площадка W×W */}
-      <mesh castShadow receiveShadow position={[0, yMid - 0.11, run1 + W / 2]}>
-        <boxGeometry args={[W, 0.22, W]} />
-        <GreyConcreteMaterial />
-      </mesh>
-      <mesh receiveShadow position={[0, yMid + 0.011, run1 + W / 2]}>
-        <boxGeometry args={[W, 0.022, W]} />
-        <meshStandardMaterial color="#d9d5cd" roughness={0.7} />
-      </mesh>
-      {/* поручень по внешнему краю площадки */}
-      <group position={[W / 2 + 0.06, yMid, run1]}>
-        {[0, W].map((dz, i) => (
-          <mesh key={`lpr-${i}`} castShadow position={[0, 0.49, dz]}>
-            <boxGeometry args={[0.028, 0.98, 0.028]} />
-            <RailMat />
-          </mesh>
-        ))}
-        <mesh position={[0, 0.95, W / 2]}>
-          <boxGeometry args={[0.06, 0.05, W]} />
-          <RailMat />
-        </mesh>
-      </group>
-      {/* марш 2 — поворот налево (вдоль -X) */}
-      <group position={[-W / 2, yMid, run1 + W / 2]} rotation={[0, -Math.PI / 2, 0]}>
-        <StairFlight steps={s2} riser={riser} tread={tread} width={W} railSide={-1} />
-      </group>
-      {/* верхняя площадка у выхода марша 2 (2-й этаж) */}
-      <mesh castShadow receiveShadow position={[-W / 2 - run2 - W / 2, rise - 0.11, run1 + W / 2]}>
-        <boxGeometry args={[W, 0.22, W]} />
-        <GreyConcreteMaterial />
-      </mesh>
-    </group>
-  );
-};
 
 
 
@@ -2278,33 +2216,6 @@ export const WindowsGroup = ({ activeFloor, wallsOpacity = 1.0 }: { activeFloor:
           {r[f]}
         </FloorSlice>
       ))}
-    </group>
-  );
-};
-
-export const Rib = ({ position, height = 13.20, rotation = [0, 0, 0], onlyBrick = false }: any) => {
-  const baseHeight = 1.5;
-  const topHeight = height - baseHeight;
-  if (onlyBrick) {
-    return (
-      <group position={[position[0], height/2, position[2]]} rotation={rotation}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[1.2, height, 0.6]} />
-          <BrickMaterial args={[1.2, height, 0.6]} />
-        </mesh>
-      </group>
-    );
-  }
-  return (
-    <group position={[position[0], 0, position[2]]} rotation={rotation}>
-      <mesh castShadow receiveShadow position={[0, baseHeight / 2, 0]}>
-        <boxGeometry args={[1.26, baseHeight, 0.64]} />
-        <ConcreteMaterial args={[1.26, baseHeight, 0.64]} />
-      </mesh>
-      <mesh castShadow receiveShadow position={[0, baseHeight + topHeight / 2, 0]}>
-        <boxGeometry args={[1.2, topHeight, 0.6]} />
-        <BrickMaterial args={[1.2, topHeight, 0.6]} />
-      </mesh>
     </group>
   );
 };

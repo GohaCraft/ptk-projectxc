@@ -28,7 +28,6 @@ import {
   MetalPlatform,
   SolidWall,
   MuralMosaic,
-  BlueprintOverlay,
   AsphaltBlueprintBoard,
   RoofTop,
   WindowsGroup,
@@ -47,18 +46,11 @@ import {
   RussianFlag,
   Ducts,
   AirDucts3D,
-  CarpetRack,
-  WorkoutArea,
   AddressSign
 } from './VisualProps';
 
 import {
-  DynamicTree,
-  StreetLantern,
-  CourtyardBench,
-  CompoundFence,
-  CompoundLandscape,
-  DynamicBirdsFlock
+  CompoundLandscape
 } from './EnvironmentProps';
 
 import {
