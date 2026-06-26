@@ -512,12 +512,13 @@ export default function DynamicSun({
         ref={skyRef}
         distance={450000}
         sunPosition={skyPosTarget}
-        inclination={0}
-        azimuth={0.25}
         turbidity={0.6 + (data.cloudCover / 100) * 1.2} // crystal clear arctic air density scaling
         rayleigh={data.isNight ? 0.2 : 0.75}             // ultra-clean scattering, prevents muddy orange pollution
-        mieCoefficient={0.0004 + (data.cloudCover / 100) * 0.0006}
-        mieDirectionalG={0.82}
+        // Узкое и слабое гало солнца: раньше широкий «mie»-ореол читался как
+        // серый купол в небе («белая сфера, что стягивается при повороте»).
+        // Меньше mieCoefficient + g ближе к 1 = солнце маленькое и аккуратное.
+        mieCoefficient={0.0015}
+        mieDirectionalG={0.97}
       />
 
       {/* Atmospheric Overcast Overlay & Procedural Volumetric Clouds */}
