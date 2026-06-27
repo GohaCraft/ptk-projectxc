@@ -4,20 +4,29 @@ import React, { useEffect, useRef, useState } from 'react';
 import { flightControl } from '../data/flightControl';
 
 const MAX_RADIUS = 64;   // макс. вынос ручки, px
-const DEAD_ZONE = 0.14;  // мёртвая зона у центра
+const DEAD_ZONE = 0.12;  // мёртвая зона у центра
 
 /**
  * Плавающий экранный джойстик для киоска (без клавиатуры).
  * Работает только в режиме «Облёт». Появляется там, где нажали, — но ТОЛЬКО в
- * левой/центральной зоне экрана (≈левые 60%). Правые ~40% экрана НЕ перекрыты
- * этим слоем: нажатия там попадают на 3D-canvas и крутят камеру (обзор «головой»,
- * см. CameraManager). Так на ПК и на сенсоре можно одновременно идти (слева) и
- * осматриваться (справа). Джойстик «эластичный»: вызывается слева/по центру, но
- * тянуть ручку после захвата можно куда угодно (pointer capture).
+ * левой/центральной зоне экрана (≈левые 60%). Правые ~40% не перекрыты этим
+ * слоем: нажатия там крутят камеру (обзор «головой», см. CameraManager).
+ * Джойстик «эластичный»: вызывается слева/по центру, но тянуть ручку после
+ * захвата можно куда угодно (pointer capture).
+ *
+ * Логика отклика: после мёртвой зоны применяется мягкая кривая — у центра
+ * управление точное (медленно), к краю выходит на полную скорость/поворот.
  * Вертикаль ручки — идти вперёд/назад, горизонталь — поворот.
  */
-// Доля ширины экрана слева, отданная под джойстик. Остальное справа — обзор.
 const JOY_ZONE_WIDTH = '60%';
+
+// Мягкая кривая отклика: 0 в мёртвой зоне, плавный разгон до 1 к краю.
+function curve(v: number): number {
+  const a = Math.abs(v);
+  if (a < DEAD_ZONE) return 0;
+  const t = Math.min(1, (a - DEAD_ZONE) / (1 - DEAD_ZONE));
+  return Math.sign(v) * Math.pow(t, 1.4);
+}
 
 export default function FlightJoystick() {
   const [active, setActive] = useState(false);
@@ -39,13 +48,11 @@ export default function FlightJoystick() {
     }
     setKnob({ x: dx, y: dy });
 
-    // нормализованный вектор с мёртвой зоной
     const nx = dx / MAX_RADIUS;
     const ny = dy / MAX_RADIUS;
-    const apply = (v: number) => (Math.abs(v) < DEAD_ZONE ? 0 : v);
     flightControl.active = true;
-    flightControl.moveY = -apply(ny); // вверх по экрану = вперёд
-    flightControl.turnX = apply(nx);  // вправо по экрану = поворот вправо
+    flightControl.moveY = -curve(ny); // вверх по экрану = вперёд
+    flightControl.turnX = curve(nx);  // вправо по экрану = поворот вправо
   };
 
   const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -74,6 +81,7 @@ export default function FlightJoystick() {
   };
 
   const magnitude = Math.min(1, Math.hypot(knob.x, knob.y) / MAX_RADIUS);
+  const BASE = MAX_RADIUS * 2 + 36;
 
   return (
     <div
@@ -88,12 +96,14 @@ export default function FlightJoystick() {
     >
       {/* Подсказка, пока джойстик не активен */}
       {!active && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-2 animate-fade-in">
-          <div className="relative w-12 h-12 rounded-full border border-white/25 flex items-center justify-center">
-            <div className="w-5 h-5 rounded-full bg-white/30 animate-pulse" />
-            <span className="absolute -inset-1 rounded-full border border-white/10 animate-ping" />
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-2.5 animate-fade-in">
+          <div className="relative w-16 h-16 rounded-full border border-sky-300/25 bg-slate-900/30 backdrop-blur-md flex items-center justify-center shadow-[0_0_34px_-8px_rgba(56,189,248,0.45)]">
+            <span className="absolute inset-0 rounded-full border border-sky-300/15 animate-ping" />
+            <div className="w-7 h-7 rounded-full bg-gradient-to-b from-sky-300/80 to-sky-600/80 border border-white/30 animate-pulse" />
+            <span className="absolute top-1 text-sky-200/45 text-[7px] leading-none">▲</span>
+            <span className="absolute bottom-1 text-sky-200/45 text-[7px] leading-none">▼</span>
           </div>
-          <span className="px-3 py-1 rounded-full bg-black/45 backdrop-blur-md text-slate-200 text-[10px] font-mono tracking-wide">
+          <span className="px-3 py-1 rounded-full bg-black/50 backdrop-blur-md text-slate-200 text-[10px] font-mono tracking-wide">
             Слева — движение · справа — обзор
           </span>
         </div>
@@ -105,34 +115,38 @@ export default function FlightJoystick() {
           className="absolute pointer-events-none"
           style={{ left: base.x, top: base.y, transform: 'translate(-50%, -50%)' }}
         >
-          {/* База */}
+          {/* База — «стеклянное» кольцо со свечением по силе нажатия */}
           <div
-            className="rounded-full border border-white/30 bg-white/5 backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.45)]"
+            className="rounded-full border border-sky-300/30 bg-slate-900/35 backdrop-blur-md"
             style={{
-              width: MAX_RADIUS * 2 + 28,
-              height: MAX_RADIUS * 2 + 28,
+              width: BASE,
+              height: BASE,
               transform: 'translate(-50%, -50%)',
+              boxShadow: `0 0 ${20 + magnitude * 42}px ${magnitude * 6}px rgba(56,189,248,${0.14 + magnitude * 0.34}), inset 0 0 30px rgba(0,0,0,0.5)`,
             }}
           />
-          {/* Направляющее кольцо (подсветка силы нажатия) */}
+          {/* Кольцо силы (растёт и ярчает с выносом ручки) */}
           <div
-            className="absolute top-0 left-0 rounded-full border-2 border-sky-400/50"
+            className="absolute top-0 left-0 rounded-full border-2 border-sky-400"
             style={{
-              width: MAX_RADIUS * 2 + 28,
-              height: MAX_RADIUS * 2 + 28,
-              transform: 'translate(-50%, -50%)',
-              opacity: 0.25 + magnitude * 0.55,
+              width: BASE,
+              height: BASE,
+              transform: `translate(-50%, -50%) scale(${0.55 + magnitude * 0.45})`,
+              opacity: 0.2 + magnitude * 0.5,
             }}
           />
-          {/* Ручка */}
+          {/* Ручка — градиентная сфера с бликом */}
           <div
-            className="absolute top-0 left-0 rounded-full bg-gradient-to-b from-sky-300 to-sky-500 shadow-[0_4px_14px_rgba(14,165,233,0.55)] border border-white/40"
+            className="absolute top-0 left-0 rounded-full border border-white/50 bg-gradient-to-b from-sky-300 to-sky-600"
             style={{
-              width: 56,
-              height: 56,
-              transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+              width: 58,
+              height: 58,
+              transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px)) scale(${1 + magnitude * 0.08})`,
+              boxShadow: `0 6px 20px rgba(14,165,233,${0.5 + magnitude * 0.3}), inset 0 2px 6px rgba(255,255,255,0.45)`,
             }}
-          />
+          >
+            <span className="absolute top-2.5 left-2.5 w-3 h-3 rounded-full bg-white/45 blur-[1px]" />
+          </div>
         </div>
       )}
     </div>
