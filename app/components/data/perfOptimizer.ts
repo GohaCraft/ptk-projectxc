@@ -50,7 +50,9 @@ export function nextLowerTier(tier: PerfTier): PerfTier | null {
 
 /** Верхняя планка DPR для тира (PerformanceMonitor двигается в её пределах). */
 export function maxDprForTier(tier: PerfTier): number {
-  return tier === 'low' ? 1 : tier === 'medium' ? 1.25 : 1.5;
+  // Чуть резче (в меру): на слабом GPU допускаем лёгкий суперсэмплинг —
+  // PerformanceMonitor сам опустит DPR, если FPS просядет.
+  return tier === 'low' ? 1.1 : tier === 'medium' ? 1.4 : 1.75;
 }
 
 /**

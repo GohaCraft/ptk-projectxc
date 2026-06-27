@@ -269,9 +269,9 @@ export default function Scene3D({
         {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
         <PerformanceMonitor
           flipflops={3}
-          onDecline={() => setDpr(d => Math.max(0.85, +(d - 0.1).toFixed(2)))}
+          onDecline={() => setDpr(d => Math.max(0.9, +(d - 0.1).toFixed(2)))}
           onIncline={() => setDpr(d => Math.min(maxDpr, +(d + 0.1).toFixed(2)))}
-          onFallback={() => setDpr(0.85)}
+          onFallback={() => setDpr(0.9)}
         />
         <Suspense fallback={null}>
         {perfTier !== 'low' && <ShadowThrottle every={perfTier === 'high' ? 3 : 4} />}
