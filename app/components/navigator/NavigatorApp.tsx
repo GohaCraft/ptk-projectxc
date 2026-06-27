@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Search, RotateCcw, Sun, Moon, MapPin, Layers, Delete, Navigation2, ArrowLeft } from "lucide-react";
+import { Search, RotateCcw, Sun, Moon, MapPin, Layers, Delete, Navigation2, ArrowLeft, Box as BoxIcon } from "lucide-react";
 import { NAV, ROOM_NAMES } from "../data/navigatorData";
 import NavigatorMap from "./NavigatorMap";
 import AmbientBg from "./AmbientBg";
@@ -157,6 +157,21 @@ export default function NavigatorApp() {
               );
             })}
           </div>
+
+          {/* Кнопка перехода в изолированный 3D-кабинет (только когда выбран) */}
+          {target && (
+            <button
+              onClick={() => window.location.assign(`/room?id=${encodeURIComponent(target)}`)}
+              className="shrink-0 flex items-center justify-center gap-2.5 rounded-2xl font-bold text-white transition-transform active:scale-[0.98]"
+              style={{
+                height: 56,
+                background: "linear-gradient(135deg,#0ea5e9,#06b6d4)",
+                boxShadow: "0 14px 34px -12px rgba(14,165,233,0.7)",
+              }}
+            >
+              <BoxIcon size={20} /> Смотреть кабинет в 3D
+            </button>
+          )}
 
           {/* Низ: сброс + смена темы */}
           <div className="flex items-center gap-2 shrink-0">
