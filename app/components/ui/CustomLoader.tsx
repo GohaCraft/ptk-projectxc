@@ -213,27 +213,31 @@ export function CustomLoader({ hasStarted, firstFrameReady }: CustomLoaderProps)
                 </span>
               </div>
 
-              {/* Прогресс-бар с подсветкой */}
-              <div className="relative w-full h-[3px] bg-slate-800/60 rounded-full overflow-hidden">
+              {/* Прогресс-бар: «стеклянный» желобок + светящаяся заливка */}
+              <div className="relative w-full h-2 rounded-full overflow-hidden bg-slate-800/70 ring-1 ring-inset ring-white/[0.06] shadow-[inset_0_1px_3px_rgba(0,0,0,0.55)]">
                 <motion.div
                   initial={{ width: '0%' }}
                   animate={{ width: `${displayedProgress}%` }}
-                  transition={{ ease: 'easeOut', duration: 0.15 }}
-                  className="absolute h-full left-0 rounded-full"
+                  transition={{ ease: 'easeOut', duration: 0.2 }}
+                  className="absolute inset-y-0 left-0 rounded-full"
                   style={{
-                    background: 'linear-gradient(90deg, #3a5f9e, #7da3dd, #aecbff)',
-                    boxShadow: '0 0 12px 0 rgba(125,163,221,0.55)',
+                    background: 'linear-gradient(90deg, #2f5db0, #5b87c9, #9ec5ff)',
+                    boxShadow: '0 0 16px 1px rgba(125,163,221,0.7)',
                   }}
                 />
-                {/* блик, бегущий по бару */}
+                {/* верхний глянец на заливке */}
                 <motion.div
-                  className="absolute top-0 h-full w-16 pointer-events-none"
-                  style={{
-                    background:
-                      'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
-                  }}
-                  animate={{ x: ['-10%', `${Math.max(displayedProgress, 1) + 5}%`] }}
-                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute top-0 left-0 h-1/2 rounded-full pointer-events-none"
+                  animate={{ width: `${displayedProgress}%` }}
+                  transition={{ ease: 'easeOut', duration: 0.2 }}
+                  style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.35), transparent)' }}
+                />
+                {/* бегущий блик */}
+                <motion.div
+                  className="absolute top-0 h-full w-20 pointer-events-none mix-blend-screen"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)' }}
+                  animate={{ x: ['-15%', `${Math.max(displayedProgress, 1) + 8}%`] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
                 />
               </div>
             </div>

@@ -121,43 +121,45 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
           className="w-28 h-px bg-gradient-to-r from-transparent via-slate-500 to-transparent mb-9"
         />
 
-        <motion.button
+        {/* Кнопки одной ширины, аккуратной колонкой (primary + secondary) */}
+        <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
-          onClick={handleClick}
-          className="group relative flex items-center justify-center gap-3 pl-7 pr-6 py-3.5 rounded-xl overflow-hidden cursor-pointer
-                     border border-sky-400/30 bg-gradient-to-r from-sky-500/15 to-cyan-500/10
-                     text-slate-100 hover:text-white hover:border-sky-300/60 transition-all
-                     shadow-[0_8px_30px_-12px_rgba(56,189,248,0.5)]"
+          transition={{ duration: 0.4, delay: 0.4 }}
+          className="flex flex-col items-stretch gap-3 w-full max-w-[300px]"
         >
-          {/* блик при наведении */}
-          <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700
-                           bg-gradient-to-r from-transparent via-white/15 to-transparent" />
-          <span className="relative text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
-            Просмотр 3D модели
-          </span>
-          <ArrowRight className="relative w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
-        </motion.button>
+          {/* Основная — Просмотр 3D */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleClick}
+            className="group relative flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl overflow-hidden cursor-pointer
+                       border border-sky-400/40 bg-gradient-to-r from-sky-500/20 to-cyan-500/15
+                       text-white transition-all
+                       shadow-[0_10px_34px_-12px_rgba(56,189,248,0.6)] hover:border-sky-300/70 hover:shadow-[0_12px_40px_-10px_rgba(56,189,248,0.7)]"
+          >
+            <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700
+                             bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <span className="relative text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
+              Просмотр 3D модели
+            </span>
+            <ArrowRight className="relative w-4 h-4 text-sky-200 group-hover:translate-x-1 transition-transform" />
+          </motion.button>
 
-        {/* Переход в Навигатор по кабинетам (отдельный экран /navigator) */}
-        <motion.button
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          transition={{ duration: 0.3, delay: 0.5 }}
-          onClick={() => window.location.assign('/navigator')}
-          className="group mt-4 flex items-center justify-center gap-2.5 pl-6 pr-5 py-3 rounded-xl cursor-pointer
-                     border border-slate-600/40 bg-white/[0.03] text-slate-300 hover:text-white hover:border-teal-300/60 transition-all"
-        >
-          <Navigation2 className="w-4 h-4 text-teal-300" />
-          <span className="text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
-            Навигатор по кабинетам
-          </span>
-        </motion.button>
+          {/* Вторичная — Навигатор по кабинетам (/navigator) */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => window.location.assign('/navigator')}
+            className="group flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl cursor-pointer
+                       border border-slate-600/50 bg-white/[0.04] text-slate-300 hover:text-white hover:border-teal-300/60 hover:bg-white/[0.07] transition-all"
+          >
+            <Navigation2 className="w-4 h-4 text-teal-300" />
+            <span className="text-[12px] font-mono tracking-[0.22em] uppercase font-semibold">
+              Навигатор по кабинетам
+            </span>
+          </motion.button>
+        </motion.div>
 
         {/* Сообщение о блокировке модели администратором */}
         <AnimatePresence>
