@@ -221,7 +221,45 @@ function createWindow(port) {
     }
   });
 
+  // ── Watchdog для киоска: авто-восстановление при сбое/зависании ──────────
+  // Если рендер упал (вылет, потеря WebGL-контекста) или окно надолго зависло —
+  // молча перезагружаем страницу, чтобы киоск не «умирал» до прихода человека.
+  // Нарастающая пауза не даёт зациклиться, если что-то падает постоянно.
+  let recovering = false;
+  let crashCount = 0;
+  let lastCrash = 0;
+  let unresponsiveTimer = null;
+
+  const recover = (reason) => {
+    if (recovering || !mainWindow || mainWindow.isDestroyed()) return;
+    recovering = true;
+    const now = Date.now();
+    if (now - lastCrash > 60000) crashCount = 0; // давно не падало — сбрасываем счётчик
+    lastCrash = now;
+    crashCount++;
+    const delay = Math.min(1000 * crashCount, 8000);
+    console.error(`[Watchdog] ${reason} — перезагрузка через ${delay}мс (попытка ${crashCount})`);
+    setTimeout(() => {
+      recovering = false;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.loadURL(url); } catch (e) { console.error('[Watchdog] reload failed:', e); }
+      }
+    }, delay);
+  };
+
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    recover(`render-process-gone (${details && details.reason})`);
+  });
+  mainWindow.on('unresponsive', () => {
+    if (unresponsiveTimer) return;
+    unresponsiveTimer = setTimeout(() => recover('окно не отвечает > 12с'), 12000);
+  });
+  mainWindow.on('responsive', () => {
+    if (unresponsiveTimer) { clearTimeout(unresponsiveTimer); unresponsiveTimer = null; }
+  });
+
   mainWindow.on('closed', () => {
+    if (unresponsiveTimer) { clearTimeout(unresponsiveTimer); unresponsiveTimer = null; }
     mainWindow = null;
   });
 }
