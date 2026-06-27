@@ -802,7 +802,7 @@ export default function BuildingModelViewer() {
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="model-viewer-layout">
+    <div className="ui-readable relative w-full h-full overflow-hidden bg-[#0f172a]" id="model-viewer-layout">
       {/* Плашка авто-обновления (только в .exe; в вебе ничего не рисует) */}
       <UpdateBanner />
 

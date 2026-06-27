@@ -11,6 +11,11 @@ body {
   overflow: hidden;
 }
 
+/* Читаемость UI-оверлеев поверх 3D-сцены: тень у текста (наследуется) и
+   drop-shadow у иконок — чтобы не сливались со светлым фоном (снег/белые стены). */
+.ui-readable { text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.45); }
+.ui-readable svg { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.7)); }
+
 /* Скрыть полосу прокрутки (но прокрутка работает) */
 .scrollbar-none::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
