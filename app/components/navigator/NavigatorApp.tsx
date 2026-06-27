@@ -47,8 +47,8 @@ export default function NavigatorApp() {
     if (!target) return null;
     const tf = NAV.rooms[target].floor;
     if (tf === 1) return "Идите по синей линии со стрелками до отметки «ЦЕЛЬ».";
-    if (floor === 1) return `Идите по синей линии до оранжевого круга и нажмите его — поднимитесь на ${tf} этаж.`;
     if (floor === tf) return "Идите по синей линии до отметки «ЦЕЛЬ».";
+    if (floor < tf) return "Идите по синей линии до оранжевого круга и нажмите его — подниметесь на следующий этаж.";
     return `Кабинет «${target}» находится на ${tf} этаже.`;
   }, [target, floor]);
 

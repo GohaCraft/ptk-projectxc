@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { NAV, Pt, RoomRoute } from "../data/navigatorData";
+import { NAV, Pt, RoomRoute, FLOOR_VIEW, STAIR_CORES } from "../data/navigatorData";
 
 // Точки-стрелки вдоль ломаной линии (равномерно) — чтобы было видно направление.
 function arrowsAlong(points: Pt[], spacing: number) {
@@ -28,6 +28,14 @@ function polyStr(points: Pt[]) {
   return points.map((p) => `${p[0]},${p[1]}`).join(" ");
 }
 
+// Последовательность подъёма по лестнице к этажу TF.
+// Для целого этажа — все полные этажи 1..TF (чтобы змейка была и на промежуточных).
+// Для полуэтажа (2.5/3.5/4.5) — напрямую [1, TF] (это самостоятельные цели).
+function climbSequence(TF: number): number[] {
+  if (Number.isInteger(TF)) return Array.from({ length: TF }, (_, i) => i + 1);
+  return [1, TF];
+}
+
 export default function NavigatorMap({
   floor,
   targetRoom,
@@ -44,7 +52,10 @@ export default function NavigatorMap({
 
   const view = useMemo(() => {
     if (!meta) return null;
-    const scaleRef = meta.w / 2150;
+    // viewBox по габаритам здания на этом этаже (фикс «прыжка» при переключении).
+    const vb = FLOOR_VIEW[String(floor)] || ([0, 0, meta.w, meta.h] as [number, number, number, number]);
+    // Размеры элементов считаем от видимой ширины → на экране они одинаковы на всех этажах.
+    const scaleRef = vb[2] / 2150;
     const ROUTE = "#2563eb";
     const stroke = 11 * scaleRef;
     const arrowSize = 16 * scaleRef;
@@ -52,21 +63,46 @@ export default function NavigatorMap({
     let routePts: Pt[] | null = null;
     let target: Pt | null = null;
     let stair: { at: Pt; toFloor: number } | null = null;
+    let transit = false; // промежуточный этаж (показываем «продолжайте подъём»)
 
     if (data) {
-      if (floor === data.floor && data.path) {
+      const TF = data.floor;
+      const climb = climbSequence(TF);
+      // Левый/правый лестничный узел — по тому, где на 1 этаже заканчивается stairHint.
+      const side: "left" | "right" =
+        data.stairHint && data.stairHint[data.stairHint.length - 1][0] >= 1075 ? "right" : "left";
+      const coreFor = (f: number): Pt | null => STAIR_CORES[side][String(f)] || null;
+      const idx = climb.indexOf(floor);
+
+      if (floor === TF && data.path) {
+        // Финишный этаж: маршрут от лестницы до кабинета.
         routePts = data.path;
         target = data.path[data.path.length - 1];
-      } else if (floor === 1 && data.floor > 1 && data.stairHint) {
+      } else if (floor === 1 && TF > 1 && data.stairHint) {
+        // Старт: от «ВЫ ЗДЕСЬ» до лестницы, кнопка — на следующий этаж.
         routePts = [NAV.KIOSK, ...data.stairHint];
-        stair = { at: data.stairHint[data.stairHint.length - 1], toFloor: data.floor };
+        stair = { at: data.stairHint[data.stairHint.length - 1], toFloor: climb[1] };
+      } else if (Number.isInteger(TF) && idx > 0 && floor < TF) {
+        // Промежуточный полный этаж: короткая «змейка» у лестницы + шаг вверх.
+        const core = coreFor(floor);
+        if (core) {
+          transit = true;
+          routePts = [
+            [core[0], core[1] + 130],
+            [core[0] - 78, core[1] + 46],
+            [core[0] + 14, core[1] - 6],
+            [core[0], core[1] - 40],
+          ];
+          stair = { at: core, toFloor: climb[idx + 1] };
+        }
       }
     }
-    return { scaleRef, ROUTE, stroke, arrowSize, routePts, target, stair };
+    return { vb, scaleRef, ROUTE, stroke, arrowSize, routePts, target, stair, transit };
   }, [meta, data, floor]);
 
   if (!meta || !view) return null;
   const s = view.scaleRef;
+  const vb = view.vb;
 
   const Marker = ({ x, y, label, sub, color, ring, pop }: { x: number; y: number; label: string; sub?: string; color: string; ring: string; pop?: boolean }) => {
     const r = 18 * s;
@@ -87,7 +123,7 @@ export default function NavigatorMap({
   const imgFilter = dark ? "invert(0.9) hue-rotate(180deg) brightness(0.95) contrast(1.05)" : "none";
 
   return (
-    <svg viewBox={`0 0 ${meta.w} ${meta.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full" style={{ display: "block" }}>
+    <svg viewBox={`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full" style={{ display: "block" }}>
       <image key={`${floor}-${dark}`} className="nav-fade" href={meta.src} x={0} y={0} width={meta.w} height={meta.h} style={{ filter: imgFilter }} />
 
       {/* Маршрут: сплошная линия + бегущие штрихи поверх */}
@@ -104,6 +140,11 @@ export default function NavigatorMap({
       )}
 
       {floor === 1 && <Marker x={NAV.KIOSK[0]} y={NAV.KIOSK[1]} label="ВЫ ЗДЕСЬ" color="#16a34a" ring="#22c55e" />}
+
+      {/* На промежуточном этаже — отметка «вы поднялись сюда» у лестницы */}
+      {view.transit && view.stair && (
+        <Marker x={view.stair.at[0]} y={view.stair.at[1] + 130} label={`${floor} этаж`} color="#16a34a" ring="#22c55e" />
+      )}
 
       {view.target && <Marker key={`t-${targetRoom}-${floor}`} x={view.target[0]} y={view.target[1]} label="ЦЕЛЬ" sub={targetRoom || undefined} color="#2563eb" ring="#3b82f6" pop />}
 
