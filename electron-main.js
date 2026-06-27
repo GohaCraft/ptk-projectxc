@@ -182,6 +182,7 @@ function createWindow(port) {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    fullscreen: true, // киоск: сразу полноэкранный режим (как F11). Выход — F11.
     title: "ZGU 3D Building Model & Blueprint Editor",
     icon: path.join(__dirname, 'public', 'favicon.ico'),
     webPreferences: {
