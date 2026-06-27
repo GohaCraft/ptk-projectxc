@@ -831,7 +831,7 @@ export default function BuildingModelViewer() {
             {perfStats.calls} draw calls
           </span>
           <span className="text-slate-400"> · </span>
-          <span className="text-slate-300">{(perfStats.tris / 1000).toFixed(0)}k tris</span>
+          <span className="text-slate-300">{Number.isFinite(perfStats.tris) ? (perfStats.tris / 1000).toFixed(0) : '—'}k tris</span>
           <span className="text-slate-400"> · </span>
           <span className="text-sky-300">{perfTier}</span>
         </div>
