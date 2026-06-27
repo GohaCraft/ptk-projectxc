@@ -10,7 +10,8 @@ const FLOORS = NAV.floors;
 const IDLE_MS = 60_000; // авто-сброс при бездействии
 
 export default function NavigatorApp() {
-  const [dark, setDark] = useState(false);
+  // По умолчанию тёмная «стеклянная» тема — в одном языке с 3D-моделью.
+  const [dark, setDark] = useState(true);
   const [floor, setFloor] = useState<number>(1);
   const [target, setTarget] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -51,28 +52,35 @@ export default function NavigatorApp() {
     return `Кабинет «${target}» находится на ${tf} этаже.`;
   }, [target, floor]);
 
-  // ── палитра темы ──
+  // ── палитра темы (тёмная = язык 3D-модели: глубокий фон, бирюзово-голубые акценты) ──
   const T = dark
-    ? { bg: "#0b1220", side: "#0f1830", card: "#16213f", text: "#e6edf7", sub: "#8aa0c2", border: "#23304f", chip: "#1b2742", chipActive: "#2563eb" }
-    : { bg: "#eef2f7", side: "#ffffff", card: "#f5f8fc", text: "#102a4c", sub: "#5b6b82", border: "#dbe5f1", chip: "#eaf1fa", chipActive: "#2563eb" };
+    ? { bg: "#070b14", side: "#0b1220", card: "#101c33", text: "#eaf1fb", sub: "#8aa0c2", border: "#1d2b48", chip: "#13203a", chipActive: "#0ea5e9" }
+    : { bg: "#eef2f7", side: "#ffffff", card: "#f5f8fc", text: "#102a4c", sub: "#5b6b82", border: "#dbe5f1", chip: "#eaf1fa", chipActive: "#0ea5e9" };
 
   const keypad = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 
   return (
     <div className="w-screen h-screen flex flex-col overflow-hidden select-none" style={{ background: T.bg, color: T.text }}>
-      {/* ── Верхняя панель ── */}
-      <div className="flex items-center justify-between px-6 shrink-0" style={{ height: 64, background: dark ? "#0d1730" : "#2563eb" }}>
-        <div className="flex items-center gap-3 text-white">
+      {/* ── Верхняя панель: тёмное стекло в стиле 3D-меню ── */}
+      <div
+        className="flex items-center justify-between px-6 shrink-0 border-b"
+        style={{ height: 66, background: "linear-gradient(180deg,#0b1220,#0a0f1c)", borderColor: "#15233e" }}
+      >
+        <div className="flex items-center gap-3 text-slate-100">
           <button
             onClick={() => window.location.assign('/')}
             title="На главную"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 transition-colors font-semibold"
+            className="group flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] border border-teal-300/25 hover:border-teal-300/70 transition-colors font-semibold text-slate-200 hover:text-white"
           >
-            <ArrowLeft size={20} strokeWidth={2.4} /> <span className="hidden md:inline text-sm">На главную</span>
+            <ArrowLeft size={18} strokeWidth={2.4} className="text-teal-300 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="hidden md:inline text-sm">На главную</span>
           </button>
-          <Navigation2 size={26} strokeWidth={2.4} />
-          <span className="text-2xl font-extrabold tracking-wide">Навигатор</span>
-          <span className="text-sm font-medium opacity-80 ml-2 hidden md:inline">Политехнический колледж</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_10px_2px_rgba(56,189,248,0.6)] ml-1" />
+          <Navigation2 size={24} strokeWidth={2.4} className="text-sky-400" />
+          <span className="menu-text-shimmer text-2xl font-extrabold tracking-wide bg-gradient-to-r from-sky-300 via-cyan-200 to-teal-300 bg-clip-text text-transparent">
+            Навигатор
+          </span>
+          <span className="text-sm font-medium text-slate-400 ml-1 hidden md:inline">Политехнический колледж</span>
         </div>
         <img src="/navigator/zgu.png" alt="ЗГУ" style={{ height: 40 }} />
       </div>
@@ -81,7 +89,9 @@ export default function NavigatorApp() {
         {/* ── Боковая панель ── */}
         <div className="flex flex-col shrink-0 p-5 gap-4" style={{ width: 430, background: T.side, borderRight: `1px solid ${T.border}` }}>
           <div>
-            <div className="text-3xl font-extrabold mb-1">Куда вам нужно?</div>
+            <div className="text-3xl font-extrabold mb-1 bg-gradient-to-r from-sky-300 via-cyan-200 to-teal-300 bg-clip-text text-transparent">
+              Куда вам нужно?
+            </div>
             <div className="text-sm" style={{ color: T.sub }}>Введите номер кабинета или выберите из списка</div>
           </div>
 
