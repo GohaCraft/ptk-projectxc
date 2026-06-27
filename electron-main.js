@@ -35,23 +35,35 @@ function setupAutoUpdater() {
 
   autoUpdater.on('download-progress', (p) => {
     if (mainWindow) {
-      mainWindow.webContents.send('update-status', { state: 'downloading', percent: Math.round(p.percent) });
+      mainWindow.webContents.send('update-status', {
+        state: 'downloading',
+        percent: Math.round(p.percent),
+        bytesPerSecond: p.bytesPerSecond,
+        transferred: p.transferred,
+        total: p.total,
+      });
     }
   });
+
+  // Тихая установка без окна установщика и без вопросов: isSilent=true,
+  // isForceRunAfter=true (перезапустить уже новую версию).
+  const installSilently = () => {
+    try { autoUpdater.quitAndInstall(true, true); }
+    catch (e) { console.warn('[Updater] quitAndInstall failed:', e && e.message); }
+  };
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Обновление загружено:', info && info.version);
-    // Никаких блокирующих нативных окон — отдаём статус в приложение,
-    // оно покажет аккуратную плашку сверху с кнопкой «Перезапустить».
+    // Показываем плашку «устанавливается», затем САМИ тихо ставим — без кнопок,
+    // без окна установщика. Для киоска: опубликовал -> само обновилось.
     if (mainWindow) {
       mainWindow.webContents.send('update-status', { state: 'downloaded', version: info && info.version });
     }
+    setTimeout(installSilently, 6000);
   });
 
-  // Кнопка «Перезапустить» в плашке приложения присылает это событие.
-  ipcMain.on('update-restart', () => {
-    try { autoUpdater.quitAndInstall(); } catch (e) { console.warn('[Updater] quitAndInstall failed:', e && e.message); }
-  });
+  // Кнопка «Установить сейчас» (необязательная) — поставить немедленно.
+  ipcMain.on('update-restart', installSilently);
 
   autoUpdater.on('error', (err) => {
     console.warn('[Updater] Ошибка проверки обновлений:', err && err.message);
@@ -266,6 +278,12 @@ function createWindow(port) {
 }
 
 app.whenReady().then(async () => {
+  // Автозапуск вместе с Windows (для киоска). Только в установленном .exe.
+  if (app.isPackaged) {
+    try { app.setLoginItemSettings({ openAtLogin: true, path: process.execPath }); }
+    catch (e) { console.warn('[Autostart] setLoginItemSettings failed:', e && e.message); }
+  }
+
   try {
     const port = await startEmbeddedServer();
     createWindow(port);

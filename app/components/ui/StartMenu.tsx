@@ -140,7 +140,7 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
           >
             <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[900ms] ease-out
                              bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-            <span className="relative text-[12.5px] font-mono tracking-[0.22em] uppercase font-semibold">
+            <span className="relative text-[14px] font-semibold tracking-wide">
               Просмотр 3D модели
             </span>
             <ArrowRight className="relative w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
@@ -159,7 +159,7 @@ export default function StartMenu({ onStart, locked = false }: { onStart: () => 
             <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[900ms] ease-out
                              bg-gradient-to-r from-transparent via-teal-200/25 to-transparent" />
             <Navigation2 className="relative w-4 h-4 text-teal-300 group-hover:-rotate-12 transition-transform" />
-            <span className="relative text-[12.5px] font-mono tracking-[0.22em] uppercase font-semibold">
+            <span className="relative text-[14px] font-semibold tracking-wide">
               Навигатор по кабинетам
             </span>
           </motion.button>
