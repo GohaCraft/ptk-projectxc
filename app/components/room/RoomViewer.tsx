@@ -15,7 +15,7 @@ import { OrbitControls, Environment } from '@react-three/drei';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Box as BoxIcon, RotateCcw } from 'lucide-react';
 import { NAV } from '../data/navigatorData';
-import Classroom from './ClassroomScene';
+import RoomScene, { resolveKind, cameraForKind } from './ClassroomScene';
 
 export default function RoomViewer() {
   const [id, setId] = useState<string | null>(null);
@@ -30,50 +30,54 @@ export default function RoomViewer() {
 
   const room = id && NAV.rooms[id] ? NAV.rooms[id] : null;
   const floor = room ? room.floor : 1;
+  const kind = room ? resolveKind(id!) : 'class';
+  const cam = cameraForKind(kind);
 
   const back = () => window.location.assign('/navigator');
 
   return (
     <div className="w-screen h-screen relative overflow-hidden bg-[#070b14] text-slate-100 select-none">
-      {/* ── 3D ── */}
-      <Canvas
-        shadows
-        dpr={[1, 1.6]}
-        camera={{ position: [6.5, 4.6, 7.5], fov: 42 }}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
-      >
-        <color attach="background" args={['#0a1018']} />
-        <fog attach="fog" args={['#0a1018', 18, 38]} />
+      {/* ── 3D (монтируем, когда кабинет известен — камера зависит от типа) ── */}
+      {ready && room && (
+        <Canvas
+          shadows
+          dpr={[1, 1.6]}
+          camera={{ position: cam.position, fov: 42 }}
+          gl={{ antialias: true, powerPreference: 'high-performance' }}
+        >
+          <color attach="background" args={['#0a1018']} />
+          <fog attach="fog" args={['#0a1018', cam.max * 1.2, cam.max * 2.6]} />
 
-        <hemisphereLight args={['#ffffff', '#5b6472', 0.85]} />
-        <ambientLight intensity={0.35} />
-        <directionalLight
-          position={[6, 9, 4]}
-          intensity={1.15}
-          castShadow
-          shadow-mapSize={[1024, 1024]}
-          shadow-camera-left={-8}
-          shadow-camera-right={8}
-          shadow-camera-top={8}
-          shadow-camera-bottom={-8}
-        />
-        <Environment preset="city" />
+          <hemisphereLight args={['#ffffff', '#5b6472', 0.85]} />
+          <ambientLight intensity={0.35} />
+          <directionalLight
+            position={[6, 11, 4]}
+            intensity={1.15}
+            castShadow
+            shadow-mapSize={[1024, 1024]}
+            shadow-camera-left={-10}
+            shadow-camera-right={10}
+            shadow-camera-top={10}
+            shadow-camera-bottom={-10}
+          />
+          <Environment preset="city" />
 
-        {ready && room && <Classroom id={id!} floor={floor} />}
+          <RoomScene id={id!} floor={floor} />
 
-        <OrbitControls
-          target={[0, 1.2, 0.4]}
-          enablePan={false}
-          minDistance={4}
-          maxDistance={14}
-          minPolarAngle={0.25}
-          maxPolarAngle={Math.PI / 2 - 0.04}
-          enableDamping
-          dampingFactor={0.08}
-          autoRotate
-          autoRotateSpeed={0.5}
-        />
-      </Canvas>
+          <OrbitControls
+            target={cam.target}
+            enablePan={false}
+            minDistance={cam.min}
+            maxDistance={cam.max}
+            minPolarAngle={0.25}
+            maxPolarAngle={Math.PI / 2 - 0.04}
+            enableDamping
+            dampingFactor={0.08}
+            autoRotate
+            autoRotateSpeed={0.5}
+          />
+        </Canvas>
+      )}
 
       {/* ── Верхняя панель в стиле 3D-меню ── */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-4 pointer-events-none">
