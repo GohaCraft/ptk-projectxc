@@ -5,11 +5,35 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { CustomWall, CustomWallItem } from './CustomWalls';
 import { FloorSlice } from './FloorSlice';
+import { mergeBoxes, BoxPart } from './geometryMerge';
 import {
   B1FloorBlueprintMaterial,
   BFloorBlueprintMaterial,
   B2FloorBlueprintMaterial
 } from './ArchitecturalModules';
+
+/**
+ * MergedBoxes — рисует набор одинаковых по материалу боксов ОДНИМ мешем
+ * (геометрии склеены), вместо десятков отдельных <mesh>. Тот же вид, но
+ * один draw call. geoKey пересобирает геометрию при смене этажа/размеров.
+ */
+const MergedBoxes: React.FC<{
+  geoKey: string;
+  boxes: BoxPart[];
+  MaterialComponent: any;
+  repArgs: [number, number, number];
+  opacity: number;
+}> = ({ geoKey, boxes, MaterialComponent, repArgs, opacity }) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const geo = useMemo(() => mergeBoxes(boxes), [geoKey]);
+  useEffect(() => () => { geo?.dispose(); }, [geo]);
+  if (!geo) return null;
+  return (
+    <mesh geometry={geo} castShadow receiveShadow>
+      <MaterialComponent args={repArgs} transparent={opacity < 1.0} opacity={opacity} />
+    </mesh>
+  );
+};
 
 interface InteriorLayoutProps {
   cx: number;
@@ -131,8 +155,16 @@ export const SlicedWall = ({
   const t = 0.6; // толщина внешних стен
   
   const isCenterBlock = blockType === 'B';
-  const isLeftBlock = blockType === 'B1';
-  const isRightBlock = blockType === 'B2';
+
+  // Индекс активного (видимого сверху) этажа. Интерьер нижних этажей скрыт
+  // плитой перекрытия -> не рендерим его (экономия draw-call/теней).
+  const activeIdx =
+    activeFloor === 1 ? 0 :
+    activeFloor === 2 ? 1 :
+    activeFloor === 2.5 ? 2 :
+    activeFloor === 3 ? 2 :
+    activeFloor === 3.5 ? 3 :
+    activeFloor === 4 ? 3 : -1;
 
   return (
     <group>
@@ -140,58 +172,53 @@ export const SlicedWall = ({
         const floorY = baseY + floorH / 2 + f * floorH;
         const isFirstFloor = f === 0;
         
-        const isCurrentFloorActive = activeFloor === (f + 1);
-        const outerOp = (activeFloor !== 5 && isCurrentFloorActive) ? Math.min(wallsOpacity, 0.22) : wallsOpacity;
+        // Стены непрозрачны при просмотре; прозрачностью управляет только слайдер wallsOpacity.
+        const outerOp = wallsOpacity;
         
-        const hasWestGap = isFirstFloor && (isCenterBlock || isRightBlock);
-        const hasEastGap = isFirstFloor && (isCenterBlock || isLeftBlock);
-        
-        const renderZWall = (wallX: number, hasGap: boolean, isWest: boolean) => {
-          if (outerOp === 0) return null;
-          
-          let gapLocalZ = -5.0;
-          let gapW = 6.0;
-          
-          if (blockType === 'B') {
-            if (isWest) {
-              gapLocalZ = 6.115;
-              gapW = 2.65;
-            } else {
-              gapLocalZ = -6.5425;
-              gapW = 2.915;
-            }
-          } else if (blockType === 'B1') {
-            gapLocalZ = -1.0;
-            gapW = 4.0;
-          } else if (blockType === 'B2') {
-            gapLocalZ = -3.4575;
-            gapW = 2.915;
-          }
+        // Проёмы (проходы) в торцевых стенах. Этаж 1 — во двор/между блоками,
+        // этаж 2 — межблочные проходы у лестниц (те же позиции по z).
+        // {z, w} — центр и ширина проёма в ЛОКАЛЬНЫХ координатах блока.
+        // ВАЖНО: межблочные стены идут в два слоя (стена крыла + стена центра),
+        // совпадают по МИРОВОМУ z. Проёмы открываем в обеих стенах синхронно:
+        //   Б1.восток (world z = 9.415 + lz) ↔ Б.запад (world z = lz)
+        //   Б.восток  (world z = lz)         ↔ Б2.запад (world z = -3.085 + lz)
+        const gapFloor = (f === 0 || f === 1);
+        const westGaps: {z: number; w: number}[] = gapFloor ? (
+          blockType === 'B'  ? [{ z: -11.135, w: 2.31 }, { z: 10.525, w: 3.13 }] :
+          blockType === 'B2' ? [{ z: 14.375, w: 1.78 }] : []
+        ) : [];
+        const eastGaps: {z: number; w: number}[] = gapFloor ? (
+          blockType === 'B1' ? [{ z: -20.55, w: 2.31 }, { z: 1.11, w: 3.13 }] :
+          blockType === 'B'  ? [{ z: 11.29, w: 1.78 }] : []
+        ) : [];
 
-          if (!hasGap || gapLocalZ < -d/2 + gapW/2 || gapLocalZ > d/2 - gapW/2) {
-             return (
-               <mesh castShadow receiveShadow position={[wallX, floorY, cz]}>
-                 <boxGeometry args={[t, floorH, d - 2*t]} />
-                 <MaterialComponent args={[t, floorH, d - 2*t]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>
-             );
+        const renderZWall = (wallX: number, gaps: {z: number; w: number}[]) => {
+          if (outerOp === 0) return null;
+
+          const zmin = -d/2 + t;
+          const zmax = d/2 - t;
+          // Вычитаем проёмы из сплошной стены -> массив сплошных сегментов
+          const sorted = gaps
+            .filter(g => g.z > zmin && g.z < zmax)
+            .sort((a, b) => a.z - b.z);
+          const segs: [number, number][] = [];
+          let cur = zmin;
+          for (const g of sorted) {
+            const gs = Math.max(zmin, g.z - g.w/2);
+            const ge = Math.min(zmax, g.z + g.w/2);
+            if (gs > cur) segs.push([cur, gs]);
+            cur = Math.max(cur, ge);
           }
-          const len1 = (gapLocalZ - gapW/2) - (-d/2 + t);
-          const z1 = -d/2 + t + len1/2;
-          
-          const len2 = (d/2 - t) - (gapLocalZ + gapW/2);
-          const z2 = gapLocalZ + gapW/2 + len2/2;
-          
+          if (cur < zmax) segs.push([cur, zmax]);
+
           return (
              <group>
-               {len1 > 0 && <mesh castShadow receiveShadow position={[wallX, floorY, cz + z1]}>
-                 <boxGeometry args={[t, floorH, len1]} />
-                 <MaterialComponent args={[t, floorH, len1]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>}
-               {len2 > 0 && <mesh castShadow receiveShadow position={[wallX, floorY, cz + z2]}>
-                 <boxGeometry args={[t, floorH, len2]} />
-                 <MaterialComponent args={[t, floorH, len2]} transparent={outerOp < 1.0} opacity={outerOp} />
-               </mesh>}
+               {segs.map(([a, b], i) => (b - a) > 0.05 && (
+                 <mesh key={`zwall-${i}`} castShadow receiveShadow position={[wallX, floorY, cz + (a + b)/2]}>
+                   <boxGeometry args={[t, floorH, b - a]} />
+                   <MaterialComponent args={[t, floorH, b - a]} transparent={outerOp < 1.0} opacity={outerOp} />
+                 </mesh>
+               ))}
              </group>
           );
         };
@@ -212,33 +239,27 @@ export const SlicedWall = ({
                      <boxGeometry args={[3.65, floorH, t]} />
                      <MaterialComponent args={[3.65, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
                    </mesh>
-                   {/* Межблочные пилястры/колонны */}
-                   {[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX, idx) => (
-                     <mesh key={`pier-n-${idx}`} castShadow receiveShadow position={[pX, floorY, cz - d/2 + t/2]}>
-                       <boxGeometry args={[0.58, floorH, t]} />
-                       <MaterialComponent args={[0.58, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
-                   {/* Ниши под окна (утопленные назад) */}
-                   {[
-                     { cx: -10.083, w: 1.548 },
-                     { cx: -8.25,   w: 1.253 },
-                     { cx: -6.417,  w: 1.253 },
-                     { cx: -4.583,  w: 1.253 },
-                     { cx: -2.75,   w: 1.253 },
-                     { cx: -0.917,  w: 1.253 },
-                     { cx: 0.917,   w: 1.253 },
-                     { cx: 2.75,    w: 1.253 },
-                     { cx: 4.583,   w: 1.253 },
-                     { cx: 6.417,   w: 1.253 },
-                     { cx: 8.25,    w: 1.253 },
-                     { cx: 10.083,  w: 1.548 },
-                   ].map((bay, idx) => (
-                     <mesh key={`bay-n-${idx}`} castShadow receiveShadow position={[bay.cx, floorY, cz - d/2 + t - 0.2]}>
-                       <boxGeometry args={[bay.w, floorH, 0.4]} />
-                       <MaterialComponent args={[bay.w, floorH, 0.4]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
+                   {/* Межблочные пилястры/колонны (склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`pier-n-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX) => ({ args: [0.58, floorH, t], pos: [pX, floorY, cz - d / 2 + t / 2] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[0.58, floorH, t]}
+                     opacity={outerOp}
+                   />
+                   {/* Ниши под окна (утопленные назад, склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`bay-n-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[
+                       { cx: -10.083, w: 1.548 }, { cx: -8.25, w: 1.253 }, { cx: -6.417, w: 1.253 },
+                       { cx: -4.583, w: 1.253 }, { cx: -2.75, w: 1.253 }, { cx: -0.917, w: 1.253 },
+                       { cx: 0.917, w: 1.253 }, { cx: 2.75, w: 1.253 }, { cx: 4.583, w: 1.253 },
+                       { cx: 6.417, w: 1.253 }, { cx: 8.25, w: 1.253 }, { cx: 10.083, w: 1.548 },
+                     ].map((bay) => ({ args: [bay.w, floorH, 0.4] as [number, number, number], pos: [bay.cx, floorY, cz - d / 2 + t - 0.2] as [number, number, number] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[1.253, floorH, 0.4]}
+                     opacity={outerOp}
+                   />
                  </group>
                ) : (
                  <mesh castShadow receiveShadow position={[cx, floorY, cz - d/2 + t/2]}>
@@ -262,33 +283,27 @@ export const SlicedWall = ({
                      <boxGeometry args={[3.65, floorH, t]} />
                      <MaterialComponent args={[3.65, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
                    </mesh>
-                   {/* Межблочные пилястры/колонны */}
-                   {[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX, idx) => (
-                     <mesh key={`pier-s-${idx}`} castShadow receiveShadow position={[pX, floorY, cz + d/2 - t/2]}>
-                       <boxGeometry args={[0.58, floorH, t]} />
-                       <MaterialComponent args={[0.58, floorH, t]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
-                   {/* Ниши под окна (утопленные внутрь) */}
-                   {[
-                     { cx: -10.083, w: 1.548 },
-                     { cx: -8.25,   w: 1.253 },
-                     { cx: -6.417,  w: 1.253 },
-                     { cx: -4.583,  w: 1.253 },
-                     { cx: -2.75,   w: 1.253 },
-                     { cx: -0.917,  w: 1.253 },
-                     { cx: 0.917,   w: 1.253 },
-                     { cx: 2.75,    w: 1.253 },
-                     { cx: 4.583,   w: 1.253 },
-                     { cx: 6.417,   w: 1.253 },
-                     { cx: 8.25,    w: 1.253 },
-                     { cx: 10.083,  w: 1.548 },
-                   ].map((bay, idx) => (
-                     <mesh key={`bay-s-${idx}`} castShadow receiveShadow position={[bay.cx, floorY, cz + d/2 - t + 0.2]}>
-                       <boxGeometry args={[bay.w, floorH, 0.4]} />
-                       <MaterialComponent args={[bay.w, floorH, 0.4]} transparent={outerOp < 1.0} opacity={outerOp} />
-                     </mesh>
-                   ))}
+                   {/* Межблочные пилястры/колонны (склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`pier-s-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[-9.167, -7.333, -5.50, -3.667, -1.833, 0.00, 1.833, 3.667, 5.50, 7.333, 9.167].map((pX) => ({ args: [0.58, floorH, t], pos: [pX, floorY, cz + d / 2 - t / 2] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[0.58, floorH, t]}
+                     opacity={outerOp}
+                   />
+                   {/* Ниши под окна (утопленные внутрь, склеены в один меш) */}
+                   <MergedBoxes
+                     geoKey={`bay-s-${floorY.toFixed(3)}-${floorH.toFixed(3)}-${cz}-${t}`}
+                     boxes={[
+                       { cx: -10.083, w: 1.548 }, { cx: -8.25, w: 1.253 }, { cx: -6.417, w: 1.253 },
+                       { cx: -4.583, w: 1.253 }, { cx: -2.75, w: 1.253 }, { cx: -0.917, w: 1.253 },
+                       { cx: 0.917, w: 1.253 }, { cx: 2.75, w: 1.253 }, { cx: 4.583, w: 1.253 },
+                       { cx: 6.417, w: 1.253 }, { cx: 8.25, w: 1.253 }, { cx: 10.083, w: 1.548 },
+                     ].map((bay) => ({ args: [bay.w, floorH, 0.4] as [number, number, number], pos: [bay.cx, floorY, cz + d / 2 - t + 0.2] as [number, number, number] }))}
+                     MaterialComponent={MaterialComponent}
+                     repArgs={[1.253, floorH, 0.4]}
+                     opacity={outerOp}
+                   />
                  </group>
                ) : (
                  <mesh castShadow receiveShadow position={[cx, floorY, cz + d/2 - t/2]}>
@@ -299,10 +314,10 @@ export const SlicedWall = ({
              )}
              
              {/* Западная стена (-X) */}
-             {renderZWall(cx - w/2 + t/2, hasWestGap, true)}
-             
+             {renderZWall(cx - w/2 + t/2, westGaps)}
+
              {/* Восточная стена (+X) */}
-             {renderZWall(cx + w/2 - t/2, hasEastGap, false)}
+             {renderZWall(cx + w/2 - t/2, eastGaps)}
 
              {/* Перекрытие (пол этажа) */}
               <mesh castShadow receiveShadow position={[cx, baseY + f * floorH + 0.1, cz]}>
@@ -320,21 +335,24 @@ export const SlicedWall = ({
                 </mesh>
              )}
              
-             {/* Внутренние стены для всех 4 этажей */}
-             <InteriorLayout
-                cx={cx} cz={cz} w={w} d={d}
-                floorH={floorH} floorY={floorY}
-                blockType={blockType as 'B' | 'B1' | 'B2'}
-                floorIdx={f as 0 | 1 | 2 | 3}
-                wallsOpacity={wallsOpacity}
-                customWalls={customWalls}
-                originalWalls={originalWalls}
-                selectedWallId={selectedWallId}
-                onSelectWall={onSelectWall}
-                onWallMove={onWallMove}
-                onDragChange={onDragChange}
-                isEditMode={isEditMode}
-             />
+             {/* Внутренние перегородки — только для активного (верхнего видимого) этажа.
+                 Интерьер нижних этажей скрыт плитой -> не рисуем (оптимизация FPS). */}
+             <group visible={activeIdx === f}>
+               <InteriorLayout
+                  cx={cx} cz={cz} w={w} d={d}
+                  floorH={floorH} floorY={floorY}
+                  blockType={blockType as 'B' | 'B1' | 'B2'}
+                  floorIdx={f as 0 | 1 | 2 | 3}
+                  wallsOpacity={wallsOpacity}
+                  customWalls={customWalls}
+                  originalWalls={originalWalls}
+                  selectedWallId={selectedWallId}
+                  onSelectWall={onSelectWall}
+                  onWallMove={onWallMove}
+                  onDragChange={onDragChange}
+                  isEditMode={isEditMode}
+               />
+             </group>
           </FloorSlice>
         );
       })}

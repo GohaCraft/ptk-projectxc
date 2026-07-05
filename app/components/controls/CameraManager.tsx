@@ -5,6 +5,7 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { InteractiveZone } from '../data/interactiveZones';
+import { flightControl } from '../data/flightControl';
 
 interface CameraManagerProps {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
@@ -12,6 +13,7 @@ interface CameraManagerProps {
   activeFloor?: number;
   cameraMode?: 'orbit' | 'top' | 'flight';
   selectedZone?: InteractiveZone | null;
+  resetSignal?: number;
 }
 
 const getFloorHeight = (floor: number) => {
@@ -25,8 +27,39 @@ const getFloorHeight = (floor: number) => {
   return 15.5; // Floor 6 / Roof Complete
 };
 
-export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 5, cameraMode = 'orbit', selectedZone = null }: CameraManagerProps) {
-  const { camera } = useThree();
+// Радиус «тела» камеры для столкновений (камера = сфера этого радиуса)
+const COLLISION_RADIUS = 0.7;
+
+// Мёртвая зона экранного джойстика — гасит дрейф сенсора на киоске.
+const JOY_DEADZONE = 0.06;
+
+// Переиспользуемые scratch-объекты (CameraManager — единственный инстанс на сцену).
+// Считаются каждый кадр в режиме облёта; без этого были бы аллокации и нагрузка на GC.
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _moveDir = new THREE.Vector3();
+const _horiz = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+// Первое пересечение, у которого ВЕСЬ путь к корню видим (скрытые этажи игнорим)
+function firstVisibleHit(hits: THREE.Intersection[]): THREE.Intersection | null {
+  for (const h of hits) {
+    let o: THREE.Object3D | null = h.object;
+    let visible = true;
+    while (o) {
+      if (o.visible === false) { visible = false; break; }
+      o = o.parent;
+    }
+    // пропускаем пол/землю как препятствие по вертикали? нет — пол тоже твёрдый
+    if (visible) return h;
+  }
+  return null;
+}
+
+export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 5, cameraMode = 'orbit', selectedZone = null, resetSignal = 0 }: CameraManagerProps) {
+  const { camera, scene } = useThree();
+  const raycaster = useRef(new THREE.Raycaster());
 
   const prevActiveFloor = useRef<number>(activeFloor);
   const prevCameraMode = useRef<'orbit' | 'top' | 'flight'>(cameraMode);
@@ -183,6 +216,30 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
   const endCameraPos = useRef<THREE.Vector3>(new THREE.Vector3());
   const endControlsTarget = useRef<THREE.Vector3>(new THREE.Vector3());
 
+  // Жёсткий сброс камеры по сигналу (кнопка выключения / авто-возврат по простою).
+  // OrbitControls сам не возвращается в исходную позицию — делаем это явно.
+  useEffect(() => {
+    if (resetSignal === 0) return; // 0 — начальное значение, на маунте не трогаем
+    const controls = controlsRef.current;
+    isTransitioning.current = false;
+    transitionProgress.current = 0;
+    yaw.current = 0;
+    pitch.current = 0;
+    camera.up.set(0, 1, 0);
+    camera.position.set(0, 15, 45);
+    if (controls) {
+      controls.target.set(0, 4, 0);
+      controls.update();
+    } else {
+      camera.lookAt(0, 4, 0);
+    }
+    // Синхронизируем «предыдущие» значения, чтобы эффект перехода не дёргал камеру
+    prevActiveFloor.current = activeFloor;
+    prevCameraMode.current = cameraMode;
+    prevSelectedZone.current = selectedZone;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal]);
+
   // Trigger transition when activeFloor, cameraMode or selectedZone changes
   useEffect(() => {
     if (!controlsRef.current) return;
@@ -244,7 +301,10 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
     prevSelectedZone.current = selectedZone;
   }, [activeFloor, cameraMode, controlsRef, camera, selectedZone]);
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    // Ограничиваем шаг времени: после неактивной вкладки/лага delta может быть
+    // огромной и «телепортировать» камеру сквозь стены или мимо цели перехода.
+    const delta = Math.min(rawDelta, 0.05);
     const controls = controlsRef.current;
 
     if (isTransitioning.current) {
@@ -277,13 +337,21 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
       );
 
       if (!isTyping) {
-        const forward = new THREE.Vector3();
+        // ── Экранный джойстик (киоск): поворот по горизонтали ──────────────
+        // Применяем поворот до расчёта направления движения.
+        if (flightControl.active && Math.abs(flightControl.turnX) > JOY_DEADZONE) {
+          yaw.current -= flightControl.turnX * 1.9 * delta;
+          _euler.set(pitch.current, yaw.current, 0);
+          camera.quaternion.setFromEuler(_euler);
+        }
+
+        const forward = _forward;
         camera.getWorldDirection(forward);
-        
-        const right = new THREE.Vector3();
+
+        const right = _right;
         right.crossVectors(forward, camera.up).normalize();
 
-        const moveDir = new THREE.Vector3(0, 0, 0);
+        const moveDir = _moveDir.set(0, 0, 0);
         if (keys.current.w) moveDir.add(forward);
         if (keys.current.s) moveDir.sub(forward);
         if (keys.current.d) moveDir.add(right);
@@ -293,34 +361,77 @@ export function CameraManager({ controlsRef, isSliceMode = false, activeFloor = 
         if (keys.current.space || keys.current.e) moveDir.y += 1.0;
         if (keys.current.shift || keys.current.q) moveDir.y -= 1.0;
 
+        // Джойстик: ход вперёд/назад по горизонтали (не утыкаясь в пол/небо)
+        let analogSpeed = 0;
+        if (flightControl.active && Math.abs(flightControl.moveY) > JOY_DEADZONE) {
+          const horiz = _horiz.set(forward.x, 0, forward.z);
+          if (horiz.lengthSq() > 0) {
+            horiz.normalize();
+            moveDir.addScaledVector(horiz, flightControl.moveY);
+            analogSpeed = Math.min(1, Math.abs(flightControl.moveY));
+          }
+        }
+
         if (moveDir.lengthSq() > 0) {
           // Precise navigation speeds
           const baseSpeed = 10;
           const sprintSpeed = 26;
-          const finalSpeed = keys.current.shift ? sprintSpeed : baseSpeed;
+          // С джойстика скорость аналоговая (чем дальше тянешь — тем быстрее)
+          const usingKeys = keys.current.w || keys.current.s || keys.current.a || keys.current.d;
+          const speedScale = (!usingKeys && analogSpeed > 0) ? analogSpeed : 1;
+          const finalSpeed = (keys.current.shift ? sprintSpeed : baseSpeed) * speedScale;
           moveDir.normalize().multiplyScalar(finalSpeed * delta);
 
-          camera.position.add(moveDir);
+          // ── Столкновения: камера не проходит сквозь стены и прочее ──────────
+          // Двигаемся по каждой оси отдельно, чтобы можно было «скользить» вдоль стены.
+          const ray = raycaster.current;
+          const axes: ('x' | 'z' | 'y')[] = ['x', 'z', 'y'];
+          for (const ax of axes) {
+            const amt = moveDir[ax];
+            if (amt === 0) continue;
+            const sign = Math.sign(amt);
+            _dir.set(0, 0, 0);
+            _dir[ax] = sign;
+            ray.set(camera.position, _dir);
+            ray.far = Math.abs(amt) + COLLISION_RADIUS;
+            const hits = ray.intersectObjects(scene.children, true);
+            const hit = firstVisibleHit(hits);
+            if (hit) {
+              // останавливаемся, не доезжая COLLISION_RADIUS до препятствия
+              const allowed = Math.max(0, hit.distance - COLLISION_RADIUS);
+              camera.position[ax] += sign * Math.min(Math.abs(amt), allowed);
+            } else {
+              camera.position[ax] += amt;
+            }
+          }
         }
       }
     }
 
-    // Prevent camera and target from going below the ground surface (y >= 0.6 for camera, y >= 0.1 for target)
-    let groundLimitTriggered = false;
-    if (camera.position.y < 0.6) {
-      camera.position.y = 0.6;
-      groundLimitTriggered = true;
-    }
-    if (cameraMode !== 'flight') {
-      if (controls) {
-        if (controls.target.y < 0.1) {
-          controls.target.y = 0.1;
-          groundLimitTriggered = true;
-        }
-        if (groundLimitTriggered) {
-          controls.update();
-        }
+    // ── Ограничения камеры: не под пол и не за края карты ────────────────
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    let limitTriggered = false;
+
+    // Вертикаль: над землёй, не выше потолка сцены
+    if (camera.position.y < 0.6) { camera.position.y = 0.6; limitTriggered = true; }
+    if (camera.position.y > 170) { camera.position.y = 170; limitTriggered = true; }
+
+    // Горизонталь: рамка карты (здание + запас) — дальше не улететь
+    const CX = 85, CZ = 85;
+    const nx = clamp(camera.position.x, -CX, CX);
+    const nz = clamp(camera.position.z, -CZ, CZ);
+    if (nx !== camera.position.x || nz !== camera.position.z) { camera.position.x = nx; camera.position.z = nz; limitTriggered = true; }
+
+    if (cameraMode !== 'flight' && controls) {
+      // Точка обзора держится в пределах карты
+      const tx = clamp(controls.target.x, -52, 52);
+      const tz = clamp(controls.target.z, -60, 62);
+      const ty = Math.max(0.1, controls.target.y);
+      if (tx !== controls.target.x || tz !== controls.target.z || ty !== controls.target.y) {
+        controls.target.set(tx, ty, tz);
+        limitTriggered = true;
       }
+      if (limitTriggered) controls.update();
     }
   });
 

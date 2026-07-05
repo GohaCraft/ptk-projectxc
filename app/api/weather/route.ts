@@ -1,240 +1,206 @@
 import { NextResponse } from 'next/server';
+import { getPolarAstronomicalData, getSeasonalFallback, LAT, LON } from '../../components/data/weatherFallback';
 
 export const dynamic = 'force-dynamic';
 
-// Внутренний кэш для защиты от слишком частых запросов и сбоев API
+// ─────────────────────────────────────────────────────────────────────────────
+//  МУЛЬТИ-ИСТОЧНИКОВЫЙ МОНИТОРИНГ ПОГОДЫ (Норильск)
+//
+//  Опрашиваем НЕСКОЛЬКО независимых провайдеров параллельно и сверяем их между
+//  собой («не все показывают правду»):
+//    • Open-Meteo   — детальные данные: облачность по ярусам, осадки, снег, ветер;
+//    • MET Norway   — авторитетный норвежский институт (без ключа, нужен User-Agent);
+//    • wttr.in      — независимый кросс-чек (без ключа).
+//  Числовые поля агрегируем медианой (устойчива к «вранью» одного источника),
+//  направление ветра — круговым средним. Если все недоступны: старый кэш ->
+//  сезонный расчёт.
+//
+//  Безопасность: все URL фиксированы, без пользовательского ввода (нет SSRF);
+//  все значения клампятся в безопасные диапазоны.
+// ─────────────────────────────────────────────────────────────────────────────
+
 let cachedResponse: any = null;
 let lastFetchTime = 0;
-const CACHE_TTL_MS = 5 * 60 * 1000; // Кэшируем на 5 минут для высокой точности
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут
+const FETCH_TIMEOUT_MS = 4500;
+const USER_AGENT = 'ZGU-3D-DigitalTwin/1.24 (github.com/GohaCraft/ptk-projectxc)';
 
-/**
- * Вычисляет астрономическое состояние в Норильске на текущую дату.
- * В Норильске (69.3558° N, 88.1893° E) наблюдаются:
- * - Полярный День: с 20 мая по 24 июля
- * - Полярная Ночь: с 30 ноября по 13 января
- * - Белые Ночи: с 27 апреля по 19 мая и с 25 июля по 15 августа
- */
-function getPolarAstronomicalData(date: Date) {
-  const month = date.getMonth(); // 0-11
-  const day = date.getDate();    // 1-31
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const isNum = (v: any): v is number => typeof v === 'number' && isFinite(v);
 
-  // Перевод в условный день года (приблизительно для безвисокосного года)
-  const monthDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-  const dayOfYear = monthDays[month] + day;
-
-  // Полярный день: с 20 мая (140-й день) по 24 июля (205-й день)
-  const isPolarDay = dayOfYear >= 140 && dayOfYear <= 205;
-
-  // Полярная ночь: с 30 ноября (334-й день) по 13 января (13-й день)
-  const isPolarNight = dayOfYear >= 334 || dayOfYear <= 13;
-
-  // Белые ночи:
-  // 1-й период: с 27 апреля (117-й день) по 19 мая (139-й день)
-  // 2-й период: с 25 июля (206-й день) по 15 августа (227-й день)
-  const isWhiteNights = (dayOfYear >= 117 && dayOfYear <= 139) || (dayOfYear >= 206 && dayOfYear <= 227);
-
-  let periodName = "Обычная смена дня и ночи";
-  let description = "Суточный ритм смены солнца и сумерек.";
-
-  if (isPolarDay) {
-    periodName = "Полярный День";
-    description = "Солнце не заходит за горизонт 24 часа в сутки. Круглосуточный яркий свет.";
-  } else if (isPolarNight) {
-    periodName = "Полярная Ночь";
-    description = "Солнце не поднимается над горизонтом. Круглосуточные сумерки и темнота.";
-  } else if (isWhiteNights) {
-    periodName = "Белые Ночи";
-    description = "Светлые сумерки всю ночь, солнце опускается за горизонт незначительно.";
-  }
-
-  return {
-    isPolarDay,
-    isPolarNight,
-    isWhiteNights,
-    periodName,
-    description,
-    dayOfYear
-  };
+interface Sample {
+  source: string;
+  cloud_cover: number;
+  cloud_low?: number;
+  cloud_mid?: number;
+  cloud_high?: number;
+  precip_mm: number;     // мм/ч (жидкий эквивалент)
+  snowfall_cm?: number;  // см/ч
+  temperature?: number;  // °C
+  weather_code?: number; // WMO
+  wind_speed: number;    // м/с
+  wind_dir: number;      // град
 }
 
-/**
- * Имитирует реалистичную погоду Норильска по сезонам, если API недоступно.
- */
-function getSeasonalFallback() {
-  const date = new Date();
-  const month = date.getMonth(); // 0 (Янв) - 11 (Дек)
+function median(arr: number[]): number {
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
 
-  let cloud_cover = 50;
-  let weather_code = 2; // Переменная облачность (0-3: ясно/облачно, 51-67: дождь, 71-77: снег)
-  let wind_speed_10m = 5.0;
-  let wind_direction_10m = 180;
+function meanAngle(degs: number[]): number {
+  let x = 0, y = 0;
+  for (const d of degs) { const r = (d * Math.PI) / 180; x += Math.cos(r); y += Math.sin(r); }
+  if (x === 0 && y === 0) return 180;
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
 
-  // Времена года в Норильске:
-  const isWinter = month === 10 || month === 11 || month === 0 || month === 1 || month === 2 || month === 3;
-  const isTransitional = month === 4 || month === 8 || month === 9;
+const pick = (samples: Sample[], key: keyof Sample): number[] =>
+  samples.map((s) => s[key]).filter(isNum) as number[];
 
-  if (isWinter) {
-    const randomChoice = Math.random();
-    if (randomChoice < 0.3) {
-      weather_code = 73; // Умеренный снегопад
-      cloud_cover = 98;
-      wind_speed_10m = 12.0; 
-    } else if (randomChoice < 0.6) {
-      weather_code = 75; // Сильный снегопад
-      cloud_cover = 100;
-      wind_speed_10m = 18.0; 
-    } else {
-      weather_code = 3; // Пасмурно, без осадков
-      cloud_cover = 90;
-      wind_speed_10m = 7.0;
-    }
-    wind_direction_10m = Math.random() > 0.5 ? 45 : 315;
-  } else if (isTransitional) {
-    const randomChoice = Math.random();
-    if (randomChoice < 0.3) {
-      weather_code = 71; // Небольшой снег
-      cloud_cover = 80;
-      wind_speed_10m = 6.0;
-    } else if (randomChoice < 0.6) {
-      weather_code = 51; // Морось / легкий дождь
-      cloud_cover = 85;
-      wind_speed_10m = 5.5;
-    } else {
-      weather_code = 2; // Переменная облачность
-      cloud_cover = 60;
-      wind_speed_10m = 4.5;
-    }
-    wind_direction_10m = Math.floor(Math.random() * 360);
-  } else {
-    // Короткое норильское лето
-    const randomChoice = Math.random();
-    if (randomChoice < 0.25) {
-      weather_code = 61; // Дождь
-      cloud_cover = 85;
-      wind_speed_10m = 5.0;
-    } else if (randomChoice < 0.55) {
-      weather_code = 2; // Облачно
-      cloud_cover = 55;
-      wind_speed_10m = 4.0;
-    } else {
-      weather_code = 1; // Преимущественно ясно
-      cloud_cover = 25;
-      wind_speed_10m = 3.0;
-    }
-    wind_direction_10m = Math.floor(Math.random() * 360);
+// ── Провайдеры (каждый возвращает Sample | null) ─────────────────────────────
+
+async function fetchOpenMeteo(): Promise<Sample | null> {
+  try {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+      `&current=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,rain,showers,snowfall,weather_code,temperature_2m,wind_speed_10m,wind_direction_10m` +
+      `&wind_speed_unit=ms`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const c = (await res.json())?.current;
+    if (!c) return null;
+    const precip = isNum(c.precipitation) ? c.precipitation : (c.rain || 0) + (c.showers || 0) + (c.snowfall || 0);
+    return {
+      source: 'open-meteo',
+      cloud_cover: c.cloud_cover, cloud_low: c.cloud_cover_low, cloud_mid: c.cloud_cover_mid, cloud_high: c.cloud_cover_high,
+      precip_mm: precip, snowfall_cm: c.snowfall, temperature: c.temperature_2m,
+      weather_code: c.weather_code, wind_speed: c.wind_speed_10m, wind_dir: c.wind_direction_10m,
+    };
+  } catch { return null; }
+}
+
+async function fetchMetNo(): Promise<Sample | null> {
+  try {
+    const url = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${LAT}&lon=${LON}`;
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const ts = (await res.json())?.properties?.timeseries?.[0];
+    const det = ts?.data?.instant?.details;
+    if (!det) return null;
+    const next1 = ts?.data?.next_1_hours;
+    const symbol: string = next1?.summary?.symbol_code || '';
+    return {
+      source: 'met.no',
+      cloud_cover: det.cloud_area_fraction,
+      precip_mm: next1?.details?.precipitation_amount ?? 0,
+      snowfall_cm: symbol.includes('snow') ? (next1?.details?.precipitation_amount ?? 0) : 0,
+      temperature: det.air_temperature,
+      wind_speed: det.wind_speed,
+      wind_dir: det.wind_from_direction,
+    };
+  } catch { return null; }
+}
+
+async function fetchWttr(): Promise<Sample | null> {
+  try {
+    const url = `https://wttr.in/${LAT},${LON}?format=j1`;
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const cc = (await res.json())?.current_condition?.[0];
+    if (!cc) return null;
+    return {
+      source: 'wttr.in',
+      cloud_cover: parseFloat(cc.cloudcover),
+      precip_mm: parseFloat(cc.precipMM),
+      temperature: parseFloat(cc.temp_C),
+      wind_speed: parseFloat(cc.windspeedKmph) / 3.6,
+      wind_dir: parseFloat(cc.winddirDegree),
+    };
+  } catch { return null; }
+}
+
+// Синтез WMO-кода, если детальный источник (Open-Meteo) недоступен.
+function synthCode(cloud: number, precip: number, isSnow: boolean): number {
+  if (precip > 0) {
+    if (isSnow) return precip < 0.5 ? 71 : precip < 1.5 ? 73 : 75;
+    return precip < 0.5 ? 51 : precip < 2 ? 61 : precip < 5 ? 63 : 65;
   }
-
-  return {
-    cloud_cover,
-    weather_code,
-    wind_speed_10m,
-    wind_direction_10m,
-    is_fallback: true
-  };
+  if (cloud < 20) return 0;
+  if (cloud < 50) return 1;
+  if (cloud < 85) return 2;
+  return 3;
 }
 
 export async function GET() {
   const now = Date.now();
-  const dateObj = new Date();
-  const polarData = getPolarAstronomicalData(dateObj);
+  const polar = getPolarAstronomicalData(new Date());
 
-  // 1. Быстрая отдача кэша для бережного отношения к лимитам
-  if (cachedResponse && (now - lastFetchTime < CACHE_TTL_MS)) {
-    return NextResponse.json({
-      ...cachedResponse,
-      polar: polarData,
-      cached: true,
-      last_updated: new Date(lastFetchTime).toISOString()
-    });
+  // 1. Свежий кэш.
+  if (cachedResponse && now - lastFetchTime < CACHE_TTL_MS) {
+    return NextResponse.json({ ...cachedResponse, polar, cached: true, last_updated: new Date(lastFetchTime).toISOString() });
   }
 
-  // Набор API URL-адресов для точности и бесперебойности (мульти-серверные запросы высокой надежности)
-  const apiSources = [
-    // Основной детальный прогноз
-    'https://api.open-meteo.com/v1/forecast?latitude=69.3558&longitude=88.1893&current=cloud_cover,weather_code,wind_speed_10m,wind_direction_10m',
-    // Резервный источник API (короткая структура)
-    'https://api.open-meteo.com/v1/forecast?latitude=69.3558&longitude=88.1893&current_weather=true',
-    // Альтернативное зеркало (другой домен/порт)
-    'https://api.open-meteo.com/v1/forecast?latitude=69.3558&longitude=88.1893&hourly=cloud_cover,weather_code&current=cloud_cover,weather_code'
-  ];
+  // 2. Опрашиваем все источники параллельно.
+  const settled = await Promise.allSettled([fetchOpenMeteo(), fetchMetNo(), fetchWttr()]);
+  const samples: Sample[] = settled
+    .map((r) => (r.status === 'fulfilled' ? r.value : null))
+    .filter((s): s is Sample => s != null && isNum(s.cloud_cover));
 
-  for (const url of apiSources) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) continue;
+  if (samples.length > 0) {
+    const om = samples.find((s) => s.source === 'open-meteo');
 
-      const data = await res.json();
-      
-      // Парсим ответ в зависимости от структуры источника
-      let cloud_cover = 50;
-      let weather_code = 2;
-      let wind_speed_10m = 5.0;
-      let wind_direction_10m = 180;
-      let success = false;
+    const cloud_cover = clamp(median(pick(samples, 'cloud_cover')), 0, 100);
+    const precipVals = pick(samples, 'precip_mm');
+    const precipitation = precipVals.length ? Math.max(0, median(precipVals)) : 0;
+    const tempVals = pick(samples, 'temperature');
+    const temperature = tempVals.length ? median(tempVals) : undefined;
+    const wind_speed_10m = clamp(median(pick(samples, 'wind_speed')), 0, 120);
+    const wind_direction_10m = meanAngle(pick(samples, 'wind_dir'));
 
-      if (data && data.current) {
-        cloud_cover = typeof data.current.cloud_cover === 'number' ? data.current.cloud_cover : 50;
-        weather_code = typeof data.current.weather_code === 'number' ? data.current.weather_code : 2;
-        wind_speed_10m = typeof data.current.wind_speed_10m === 'number' ? data.current.wind_speed_10m : 5.0;
-        wind_direction_10m = typeof data.current.wind_direction_10m === 'number' ? data.current.wind_direction_10m : 180;
-        success = true;
-      } else if (data && data.current_weather) {
-        // Упрощенный резервный вариант
-        weather_code = data.current_weather.weathercode ?? 2;
-        wind_speed_10m = data.current_weather.windspeed ?? 4.0;
-        wind_direction_10m = data.current_weather.winddirection ?? 180;
-        // Для упрощенного API берем примерное покрытие облаками по коду погоды
-        cloud_cover = weather_code >= 3 ? 100 : weather_code >= 1 ? 40 : 10;
-        success = true;
-      }
+    // Снег: явный snowfall, либо холодно (<=0.5°C) при осадках.
+    const snowHint = samples.some((s) => isNum(s.snowfall_cm) && (s.snowfall_cm as number) > 0);
+    const isSnow = snowHint || (temperature !== undefined && temperature <= 0.5 && precipitation > 0);
+    const snowfall = isSnow ? (om?.snowfall_cm ?? precipitation) : 0;
 
-      if (success) {
-        const enrichedResponse = {
-          current: {
-            cloud_cover,
-            weather_code,
-            wind_speed_10m,
-            wind_direction_10m,
-            is_fallback: false
-          },
-          polar: polarData,
-          api_source: url.split('?')[0]
-        };
+    // Код погоды: предпочитаем детальный Open-Meteo, иначе синтезируем.
+    const weather_code = isNum(om?.weather_code) ? clamp(Math.round(om!.weather_code as number), 0, 99)
+      : synthCode(cloud_cover, precipitation, isSnow);
 
-        cachedResponse = enrichedResponse;
-        lastFetchTime = now;
+    // Перекрёстная проверка: насколько источники сошлись по облачности.
+    const cc = pick(samples, 'cloud_cover');
+    const agreement = cc.length > 1 ? Math.round(100 - (Math.max(...cc) - Math.min(...cc))) : 100;
 
-        return NextResponse.json({
-          ...enrichedResponse,
-          cached: false,
-          last_updated: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      console.warn(`[Weather Source Failover] Failed fetching from: ${url}. Attempting next...`, e);
-    }
+    const enriched = {
+      current: {
+        cloud_cover,
+        cloud_cover_low: clamp(om?.cloud_low ?? (isSnow || precipitation > 0 ? cloud_cover : cloud_cover * 0.5), 0, 100),
+        cloud_cover_mid: clamp(om?.cloud_mid ?? cloud_cover * 0.6, 0, 100),
+        cloud_cover_high: clamp(om?.cloud_high ?? cloud_cover * 0.4, 0, 100),
+        precipitation: Math.round(precipitation * 100) / 100,
+        snowfall: Math.round((snowfall ?? 0) * 100) / 100,
+        temperature: temperature !== undefined ? Math.round(temperature * 10) / 10 : undefined,
+        weather_code,
+        wind_speed_10m: Math.round(wind_speed_10m * 10) / 10,
+        wind_direction_10m: Math.round(wind_direction_10m),
+        is_fallback: false,
+      },
+      polar,
+      sources: samples.map((s) => s.source),
+      agreement, // 0..100 — согласие источников по облачности
+    };
+
+    cachedResponse = enriched;
+    lastFetchTime = now;
+    return NextResponse.json({ ...enriched, cached: false, last_updated: new Date().toISOString() });
   }
 
-  // 3. Сначала пробуем выдать старый кэш
+  // 3. Все источники недоступны — старый кэш.
   if (cachedResponse) {
-    return NextResponse.json({
-      ...cachedResponse,
-      polar: polarData,
-      cached: true,
-      fallback_used: true,
-      last_updated: new Date(lastFetchTime).toISOString()
-    }, { status: 200 });
+    return NextResponse.json({ ...cachedResponse, polar, cached: true, fallback_used: true, last_updated: new Date(lastFetchTime).toISOString() });
   }
 
-  // 4. Если нет кэша, генерируем точную сезонную погоду Норильска
-  const nativeFallback = getSeasonalFallback();
-  return NextResponse.json({
-    current: nativeFallback,
-    polar: polarData,
-    cached: false,
-    fallback_used: true,
-    seasonal_generated: true,
-    last_updated: new Date().toISOString()
-  }, { status: 200 });
+  // 4. Кэша нет — локальный сезонный расчёт.
+  const fb = getSeasonalFallback();
+  return NextResponse.json({ ...fb, polar, cached: false, fallback_used: true, seasonal_generated: true, last_updated: new Date().toISOString() });
 }
-

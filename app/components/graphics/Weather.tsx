@@ -2,581 +2,273 @@
 
 import React, { useRef, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { weatherState } from "../data/weatherState";
 
 /* --------------------------------------------------------------
-   1️⃣ Noise texture – cheap 2‑D white‑noise used for puddles &
-      ripple distortion. Generated once on the client.
+   Осадки на InstancedMesh: дождь (вытянутые капли) и снег (хлопья).
+   Оптимизировано для слабого киоска (Core i3 / 4 ГБ):
+   • переиспользуем scratch-объекты — НОЛЬ аллокаций в кадре (нет нагрузки на GC);
+   • число активных частиц масштабируется интенсивностью (instancedMesh.count),
+     при слабом дожде рисуем меньше капель;
+   • когда осадков нет — цикл не выполняется вовсе.
+   Физика: капли/хлопья наклоняются и сносятся реальным ветром, длинная ось
+   капли направлена вдоль вектора скорости (естественные косые струи).
    -------------------------------------------------------------- */
-function createNoiseTexture() {
-  if (typeof window === "undefined") return null;
-  const canvas = document.createElement("canvas");
-  const size = 256;
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  const img = ctx.createImageData(size, size);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = Math.random() * 255;
-    img.data[i] = v;
-    img.data[i + 1] = v;
-    img.data[i + 2] = v;
-    img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-/* --------------------------------------------------------------
-   1b️⃣ Реальный двор колледжа (по фото): светло-серый асфальт
-   ~#8a8a86, крупные мягкие светлые/тёмные пятна-разводы,
-   лёгкая зернистость, минимум трещин (асфальт в целом ровный).
-   -------------------------------------------------------------- */
-function createAsphaltTexture() {
-  if (typeof window === "undefined") return null;
-  const size = 1024;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  // База — светло-серый асфальт
-  ctx.fillStyle = "#8c8b87";
-  ctx.fillRect(0, 0, size, size);
-
-  // Лёгкая зернистость
-  for (let i = 0; i < 50000; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const v = 0.85 + Math.random() * 0.25;
-    const c = Math.floor(140 * v);
-    ctx.fillStyle = `rgba(${c},${c - 1},${c - 3},0.25)`;
-    ctx.fillRect(x, y, 1, 1);
-  }
-
-  // Крупные светлые разводы (выгоревший/протёртый асфальт)
-  ctx.globalCompositeOperation = "lighten";
-  for (let i = 0; i < 10; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = 100 + Math.random() * 220;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, "rgba(168,166,160,0.30)");
-    grad.addColorStop(1, "rgba(168,166,160,0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.ellipse(x, y, r, r * (0.5 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalCompositeOperation = "source-over";
-
-  // Тёмные мягкие пятна (влажные/масляные участки) — немного
-  for (let i = 0; i < 8; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = 40 + Math.random() * 100;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, "rgba(70,68,64,0.22)");
-    grad.addColorStop(1, "rgba(70,68,64,0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Тонкие швы/трещины — единичные, длинные, едва заметные
-  // (на фото асфальт в основном цельный, без активной сетки трещин)
-  for (let i = 0; i < 3; i++) {
-    const x0 = Math.random() * size;
-    const y0 = Math.random() * size;
-    const angle = Math.random() * Math.PI * 2;
-    const len = 200 + Math.random() * 300;
-    ctx.strokeStyle = "rgba(55,53,50,0.18)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    const segs = 4;
-    let cx = x0, cy = y0, a = angle;
-    for (let s = 0; s < segs; s++) {
-      a += (Math.random() - 0.5) * 0.6;
-      cx += Math.cos(a) * (len / segs);
-      cy += Math.sin(a) * (len / segs);
-      ctx.lineTo(cx, cy);
-    }
-    ctx.stroke();
-  }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-
-const floorVertex = `
-  varying vec2 vUv;
-  varying vec3 vWorldPos;
-  void main() {
-    vUv = uv;
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    vWorldPos = world.xyz;
-    gl_Position = projectionMatrix * viewMatrix * world;
-  }
-`;
-
-const floorFragment = `
-  uniform sampler2D tNoise;
-  uniform float uTime;
-  uniform float uRain;          // 0‑1
-  uniform float uSnow;          // 0‑1
-  uniform float uWaterLevel;    // 0‑1  (puddle amount)
-  uniform float uSnowLevel;     // 0‑1  (snow cover)
-  uniform vec3 uBaseColor;      // dry asphalt
-  uniform vec3 uWetColor;       // wet asphalt (darker)
-  uniform vec3 uSnowColor;      // fresh snow
-  uniform float uRippleSpeed;
-  uniform float uRippleScale;
-  varying vec2 vUv;
-  varying vec3 vWorldPos;
-
-  float noise(vec2 uv) {
-    return texture2D(tNoise, uv).r;
-  }
-  // simple fbm – 2 octaves are enough for puddle shape
-  float fbm(vec2 p) {
-    float total = 0.0;
-    float amp = 0.5;
-    for (int i = 0; i < 2; i++) {
-      total += amp * noise(p);
-      p *= 2.0;
-      amp *= 0.5;
-    }
-    return total;
-  }
-
-  void main() {
-    // ---- base colour (dry/wet) -------------------------------------------------
-    float wet = smoothstep(0.0, 0.5, uWaterLevel) * uRain;
-    vec3 baseCol = mix(uBaseColor, uWetColor, wet);
-
-    // ---- puddle mask (using noise + time) --------------------------------------
-    vec2 seed = vWorldPos.xz * 0.1;
-    float puddleNoise = fbm(seed + uTime * 0.03);
-    float puddleMask = smoothstep(0.4, 0.6, puddleNoise); // 0‑1 inside a puddle
-    puddleMask = clamp(puddleMask * uRain * uWaterLevel, 0.0, 1.0);
-
-    // ---- ripple animation (concentric circles) --------------------------------
-    // ripple centre drifts slowly to avoid perfect repetition
-    vec2 rippleUV = vUv;
-    float ripple = sin(
-      length(rippleUV - vec2(0.5)) * uRippleScale - uTime * uRippleSpeed
-    ) * 0.5 + 0.5;
-    ripple = smoothstep(0.45, 0.55, ripple); // thin ring
-    // ripple adds a little specular (makes wet surface shinier)
-    float rippleSpec = ripple * 0.3 * uRain * uWaterLevel;
-
-    // ---- snow cover ------------------------------------------------------------
-    float snow = smoothstep(0.0, 0.5, uSnowLevel) * uSnow;
-    vec3 col = mix(baseCol, uWetColor, wet); // dry → wet
-    col = mix(col, uSnowColor, snow);        // wet → snow‑topped
-
-    // ---- final colour ----------------------------------------------------------
-    // add a faint specular highlight from ripples
-    col += vec3(0.02) * rippleSpec;
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-/* --------------------------------------------------------------
-   3️⃣ Floor component – uses the shader above
-   -------------------------------------------------------------- */
-export const Floor = ({
-  rainIntensity = 0,
-  snowIntensity = 0,
-  size = 800,
-}: { rainIntensity?: number; snowIntensity?: number; size?: number; tex?: any }) => {
-  const ref = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-
-  const asphaltTex = useMemo(() => {
-    const t = createAsphaltTexture();
-    if (t) {
-      // 800м плоскость, текстура 1024px повторяется каждые ~8м двора
-      t.repeat.set(size / 8, size / 8);
-    }
-    return t;
-  }, [size]);
-
-  useFrame((state, delta) => {
-    if (!materialRef.current) return;
-    const targetWater = rainIntensity > 0 ? rainIntensity : 0.0;
-    const targetSnow = snowIntensity > 0 ? snowIntensity : 0.0;
-
-    // Базовый цвет — реальный асфальт двора колледжа (светло-серый)
-    const baseColor = new THREE.Color(0x8c8b87);
-    const wetColor = new THREE.Color(0x5e5d5a);
-    const snowColor = new THREE.Color(0xeeeeee);
-    
-    // Blend colors
-    const finalColor = baseColor.clone();
-    finalColor.lerp(wetColor, targetWater);
-    finalColor.lerp(snowColor, targetSnow);
-    
-    materialRef.current.color.lerp(finalColor, delta * 2.0);
-    
-    // By keeping the wet roughness slightly higher and disabling strong envMapIntensity,
-    // we avoid the z-fighting / rendering pop that causes the floor to flicker.
-    // Повышаем шероховатость влажного асфальта и приглушаем интенсивность отражений окружения,
-    // чтобы предотвратить отображение «фантомных» зеркальных небоскрёбов из пресета окружения.
-    const targetRoughness = targetSnow > 0.5 ? 0.95 : (targetWater > 0.1 ? 0.65 : 0.9);
-    materialRef.current.roughness = THREE.MathUtils.lerp(materialRef.current.roughness, targetRoughness, delta * 2.0);
-  });
-
-  // Grid line geometry — cell 2м, покрывает 200×200м вокруг здания
-  const gridLines = useMemo(() => {
-    const gridSize = 200;
-    const cellSize = 2;
-    const count = gridSize / cellSize;
-    const half = gridSize / 2;
-    const positions: number[] = [];
-    // Вертикальные линии (вдоль Z)
-    for (let i = 0; i <= count; i++) {
-      const x = -half + i * cellSize;
-      positions.push(x, 0, -half,  x, 0, half);
-    }
-    // Горизонтальные линии (вдоль X)
-    for (let i = 0; i <= count; i++) {
-      const z = -half + i * cellSize;
-      positions.push(-half, 0, z,  half, 0, z);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    return geo;
-  }, []);
-
-  return (
-    <>
-      <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-        <planeGeometry args={[size, size, 1, 1]} />
-        <meshStandardMaterial ref={materialRef} roughness={0.92} map={asphaltTex} color={0xffffff} envMapIntensity={0.01} />
-      </mesh>
-      {/* Сетка 2×2м поверх платформы */}
-      <lineSegments geometry={gridLines} position={[0, -0.03, 0]}>
-        <lineBasicMaterial color="#555555" transparent opacity={0.35} depthWrite={false} />
-      </lineSegments>
-    </>
-  );
-};
-
-/* --------------------------------------------------------------
-   4️⃣ InstancedMesh rain drops (thin boxes) and snow flakes
-   -------------------------------------------------------------- */
-const DROP_COUNT = 350;   // optimized for butter-smooth frame rates
+const DROP_COUNT = 350;
 const SNOW_COUNT = 250;
 
-const dropGeometry = new THREE.BoxGeometry(0.04, 0.04, 0.3); // vertical drop (optimized size)
-const snowGeometry = new THREE.PlaneGeometry(0.2, 0.2, 1, 1); // snowflake (optimized size)
+// Длинная ось капли — вдоль Y (направление падения); ориентацию задаём кватернионом.
+const dropGeometry = new THREE.BoxGeometry(0.03, 0.38, 0.03);
+const snowGeometry = new THREE.PlaneGeometry(0.18, 0.18, 1, 1);
+
+// Общие scratch-объекты (вне рендера) — чтобы не аллоцировать в useFrame.
+const _mat = new THREE.Matrix4();
+const _pos = new THREE.Vector3();
+const _quat = new THREE.Quaternion();
+const _scale = new THREE.Vector3(1, 1, 1);
+const _up = new THREE.Vector3(0, 1, 0);
+const _vel = new THREE.Vector3();
+
+const HALF_SPREAD = 100; // частицы заполняют ±100 м вокруг здания
+const SPAWN_TOP = 110;
 
 export const WeatherEffects = ({
   rainIntensity = 0,
   snowIntensity = 0,
-}: { rainIntensity: number, snowIntensity: number }) => {
-  const dropMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: 0xadd8e6,
+  windSpeed = 0,
+  windDir = 0,
+}: { rainIntensity: number; snowIntensity: number; windSpeed?: number; windDir?: number }) => {
+  const dropMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    color: 0xbcd2ee,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.55,
     depthWrite: false,
   }), []);
-  
-  const snowMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+
+  const snowMaterial = useMemo(() => new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.85,
     depthWrite: false,
   }), []);
 
   const dropMesh = useRef<THREE.InstancedMesh>(null);
   const snowMesh = useRef<THREE.InstancedMesh>(null);
 
-  // ---- initialise random positions (client only) -----
+  // Стартовые случайные позиции (один раз на клиенте).
   useEffect(() => {
     if (!dropMesh.current || !snowMesh.current) return;
-    
-    const dropMatrix = new THREE.Matrix4();
-    const snowMatrix = new THREE.Matrix4();
-
     for (let i = 0; i < DROP_COUNT; i++) {
-      dropMatrix.makeTranslation(
-        (Math.random() - 0.5) * 200,
-        Math.random() * 120,
-        (Math.random() - 0.5) * 200
-      );
-      dropMesh.current.setMatrixAt(i, dropMatrix);
+      _mat.makeTranslation((Math.random() - 0.5) * 2 * HALF_SPREAD, Math.random() * SPAWN_TOP, (Math.random() - 0.5) * 2 * HALF_SPREAD);
+      dropMesh.current.setMatrixAt(i, _mat);
     }
     for (let i = 0; i < SNOW_COUNT; i++) {
-      snowMatrix.makeTranslation(
-        (Math.random() - 0.5) * 200,
-        Math.random() * 120 + 30, // start a bit higher
-        (Math.random() - 0.5) * 200
-      );
-      snowMesh.current.setMatrixAt(i, snowMatrix);
+      _mat.makeTranslation((Math.random() - 0.5) * 2 * HALF_SPREAD, Math.random() * SPAWN_TOP + 30, (Math.random() - 0.5) * 2 * HALF_SPREAD);
+      snowMesh.current.setMatrixAt(i, _mat);
     }
     dropMesh.current.instanceMatrix.needsUpdate = true;
     snowMesh.current.instanceMatrix.needsUpdate = true;
   }, []);
 
-  // ---- animate each frame ---------------------------------------------------
   useFrame((state, delta) => {
-    if (!dropMesh.current || !snowMesh.current) return;
-    
-    const dropSpeed = 22.0 * rainIntensity; // world units per second
-    const snowSpeed = 6.0 * snowIntensity;
-    const dropMat = new THREE.Matrix4();
-    const snowMat = new THREE.Matrix4();
+    const d = Math.min(0.05, delta); // защита от скачка после неактивной вкладки
 
-    // rain drops
-    if (rainIntensity > 0) {
-        for (let i = 0; i < DROP_COUNT; i++) {
-          dropMesh.current.getMatrixAt(i, dropMat);
-          const pos = new THREE.Vector3().setFromMatrixPosition(dropMat);
-          pos.y -= dropSpeed * delta;
-          if (pos.y < -20) {
-            // respawn above
-            pos.y = 120 + Math.random() * 20;
-            pos.x = (Math.random() - 0.5) * 200;
-            pos.z = (Math.random() - 0.5) * 200;
+    // Нормализуем интенсивность (API/пресеты дают 0..5) и считаем ветер.
+    const rain01 = Math.min(1, Math.max(0, rainIntensity / 5));
+    const snow01 = Math.min(1, Math.max(0, snowIntensity / 5));
+    const dirRad = (windDir * Math.PI) / 180;
+    // Горизонтальная скорость ветра (м/с -> юниты/с), с разумным потолком.
+    const wMag = Math.min(20, windSpeed) * 0.35;
+    const wX = -Math.sin(dirRad) * wMag;
+    const wZ = Math.cos(dirRad) * wMag;
+
+    // ── Дождь ───────────────────────────────────────────────
+    const dm = dropMesh.current;
+    if (dm) {
+      const active = Math.ceil(DROP_COUNT * rain01);
+      dm.count = active;
+      if (active > 0) {
+        const fall = 22 + 30 * rain01; // юниты/с — сильнее дождь, быстрее капли
+        // Наклон струй: длинную ось Y совмещаем с вектором скорости капли.
+        _vel.set(wX, -fall, wZ).normalize();
+        _quat.setFromUnitVectors(_up, _vel);
+        for (let i = 0; i < active; i++) {
+          dm.getMatrixAt(i, _mat);
+          _pos.setFromMatrixPosition(_mat);
+          _pos.y -= fall * d;
+          _pos.x += wX * d;
+          _pos.z += wZ * d;
+          if (_pos.y < 0) {
+            _pos.set((Math.random() - 0.5) * 2 * HALF_SPREAD, SPAWN_TOP + Math.random() * 20, (Math.random() - 0.5) * 2 * HALF_SPREAD);
           }
-          dropMat.makeTranslation(pos.x, pos.y, pos.z);
-          dropMesh.current.setMatrixAt(i, dropMat);
+          _mat.compose(_pos, _quat, _scale);
+          dm.setMatrixAt(i, _mat);
         }
-        dropMesh.current.instanceMatrix.needsUpdate = true;
+        dm.instanceMatrix.needsUpdate = true;
+      }
     }
 
-    // snow flakes – gentle horizontal drift
-    if (snowIntensity > 0) {
-        for (let i = 0; i < SNOW_COUNT; i++) {
-          snowMesh.current.getMatrixAt(i, snowMat);
-          const pos = new THREE.Vector3().setFromMatrixPosition(snowMat);
-          pos.y -= snowSpeed * delta;
-          // slight drift based on time + index
-          pos.x += Math.sin(state.clock.elapsedTime + i * 0.13) * 0.04 * delta * 60;
-          pos.z += Math.cos(state.clock.elapsedTime + i * 0.17) * 0.04 * delta * 60;
-          if (pos.y < -20) {
-            pos.y = 120 + Math.random() * 20;
-            pos.x = (Math.random() - 0.5) * 200;
-            pos.z = (Math.random() - 0.5) * 200;
+    // ── Снег ────────────────────────────────────────────────
+    const sm = snowMesh.current;
+    if (sm) {
+      const active = Math.ceil(SNOW_COUNT * snow01);
+      sm.count = active;
+      if (active > 0) {
+        const fall = 3 + 4 * snow01; // снег падает медленно
+        const t = state.clock.elapsedTime;
+        for (let i = 0; i < active; i++) {
+          sm.getMatrixAt(i, _mat);
+          _pos.setFromMatrixPosition(_mat);
+          _pos.y -= fall * d;
+          // дрейф: ветер + лёгкое кружение (порхание хлопьев)
+          _pos.x += (wX * 0.6 + Math.sin(t + i * 0.13) * 1.6) * d;
+          _pos.z += (wZ * 0.6 + Math.cos(t + i * 0.17) * 1.6) * d;
+          if (_pos.y < 0) {
+            _pos.set((Math.random() - 0.5) * 2 * HALF_SPREAD, SPAWN_TOP + Math.random() * 20, (Math.random() - 0.5) * 2 * HALF_SPREAD);
           }
-          snowMat.makeTranslation(pos.x, pos.y, pos.z);
-          snowMesh.current.setMatrixAt(i, snowMat);
+          _mat.makeTranslation(_pos.x, _pos.y, _pos.z);
+          sm.setMatrixAt(i, _mat);
         }
-        snowMesh.current.instanceMatrix.needsUpdate = true;
+        sm.instanceMatrix.needsUpdate = true;
+      }
     }
   });
 
   return (
     <>
-      <instancedMesh ref={dropMesh} args={[dropGeometry, dropMaterial, DROP_COUNT]} visible={rainIntensity > 0} />
-      <instancedMesh ref={snowMesh} args={[snowGeometry, snowMaterial, SNOW_COUNT]} visible={snowIntensity > 0} />
+      <instancedMesh ref={dropMesh} args={[dropGeometry, dropMaterial, DROP_COUNT]} visible={rainIntensity > 0} frustumCulled={false} />
+      <instancedMesh ref={snowMesh} args={[snowGeometry, snowMaterial, SNOW_COUNT]} visible={snowIntensity > 0} frustumCulled={false} />
     </>
   );
 };
 
-export const WeatherParticleSystem = ({ rain, snow, windSpeed, windDir }: { rain: number; snow: number; windSpeed: number; windDir: number }) => {
-  const count = 5000;
-  const pointsRef = useRef<THREE.Points>(null);
-  const splashCount = 2000;
-  const splashesRef = useRef<THREE.Points>(null);
-  const splashLife = useRef(new Float32Array(splashCount));
-  
-  const [positions, splashPositions] = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        pos[i * 3] = (Math.random() - 0.5) * 150; // x
-        pos[i * 3 + 1] = 200 + Math.random() * 50; // y - initial is out of sight
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 150; // z
+/* --------------------------------------------------------------
+   ⚡ Lightning — гроза: редкие вспышки (засвет всей сцены) + короткий разряд.
+   Дёшево: один источник света активен только во время грозы.
+----------------------------------------------------------------*/
+const Lightning = ({ active }: { active: boolean }) => {
+  const lightRef = useRef<THREE.PointLight>(null);
+  const boltRef = useRef<THREE.Mesh>(null);
+  const flash = useRef(0);
+  const timer = useRef(0);
+  const nextAt = useRef(2.5);
+  const pos = useRef<[number, number, number]>([0, 90, 0]);
+
+  useFrame((_, delta) => {
+    const L = lightRef.current;
+    const B = boltRef.current;
+    if (!active) {
+      if (L) L.intensity = 0;
+      if (B) B.visible = false;
+      return;
     }
-    const sPos = new Float32Array(splashCount * 3);
-    for (let i = 0; i < splashCount; i++) {
-        sPos[i * 3 + 1] = -100; // start hidden underground
+    timer.current += delta;
+    if (flash.current > 0) {
+      // затухание вспышки с лёгким мерцанием
+      flash.current = Math.max(0, flash.current - delta * 5.5);
+      const flick = 0.45 + Math.random() * 0.55;
+      if (L) L.intensity = flash.current * flick * 9;
+      if (B) B.visible = flash.current > 0.55;
+    } else if (timer.current >= nextAt.current) {
+      // новый разряд
+      flash.current = 1;
+      timer.current = 0;
+      nextAt.current = 3 + Math.random() * 7; // следующий через 3–10 с
+      const x = (Math.random() - 0.5) * 70;
+      const z = (Math.random() - 0.5) * 70;
+      pos.current = [x, 90, z];
+      if (L) L.position.set(x, 90, z);
+      if (B) B.position.set(x, 45, z);
+    } else if (L) {
+      L.intensity = 0;
+      if (B) B.visible = false;
     }
-    return [pos, sPos];
+  });
+
+  return (
+    <>
+      <pointLight ref={lightRef} position={pos.current} color="#dce8ff" intensity={0} distance={500} decay={0.25} />
+      <mesh ref={boltRef} position={[0, 45, 0]} visible={false}>
+        <cylinderGeometry args={[0.15, 0.4, 90, 5]} />
+        <meshBasicMaterial color="#eaf2ff" toneMapped={false} />
+      </mesh>
+    </>
+  );
+};
+
+/* --------------------------------------------------------------
+   🌫️ Туман — встроенный экспоненциальный туман сцены (FogExp2).
+   Практически бесплатно: считается в шейдерах материалов, без доп.
+   отрисовки. Плотность плавно лерпится по weatherState.fog, цвет —
+   светлый днём / тёмный ночью. Небо/облака свой туман не получают
+   (у них собственные шейдеры), поэтому «тонут» только объекты сцены —
+   именно так выглядит настоящий туман: дальние здания растворяются.
+----------------------------------------------------------------*/
+const FOG_MAX_DENSITY = 0.018;
+
+const FogController = () => {
+  const { scene } = useThree();
+  const target = useRef({ fog: weatherState.fog, isNight: weatherState.isNight });
+  const fogRef = useRef<THREE.FogExp2 | null>(null);
+
+  const dayColor = useMemo(() => new THREE.Color("#c8d2dc"), []);
+  const nightColor = useMemo(() => new THREE.Color("#10141d"), []);
+  const scratch = useMemo(() => new THREE.Color("#c8d2dc"), []);
+
+  useEffect(() => {
+    const unsub = weatherState.subscribe((s) => {
+      target.current.fog = s.fog;
+      target.current.isNight = s.isNight;
+    });
+    return () => { unsub(); };
   }, []);
 
-  const windParams = useRef({ speed: windSpeed, dir: windDir, rain: rain, snow: snow });
-  const isHiddenRef = useRef(false);
+  useEffect(() => {
+    const fog = new THREE.FogExp2(0xc8d2dc, 0);
+    scene.fog = fog;
+    fogRef.current = fog;
+    return () => { if (scene.fog === fog) scene.fog = null; };
+  }, [scene]);
 
-  useFrame((state, delta) => {
-    const d = Math.min(delta, 0.1);
-    
-    // Smoothly lerp weather parameters
-    windParams.current.speed += (windSpeed - windParams.current.speed) * d * 0.5;
-    const dp = windDir - windParams.current.dir;
-    const diff = Math.atan2(Math.sin(dp * Math.PI / 180), Math.cos(dp * Math.PI / 180)) * 180 / Math.PI;
-    windParams.current.dir += diff * d * 0.5;
-    windParams.current.rain += (rain - windParams.current.rain) * d * 0.5;
-    windParams.current.snow += (snow - windParams.current.snow) * d * 0.5;
-    
-    const wSpeed = windParams.current.speed;
-    const wDirRad = windParams.current.dir * Math.PI / 180;
-    const wX = -Math.sin(wDirRad) * wSpeed * 0.5; // Scale down wind horizontally
-    const wZ = Math.cos(wDirRad) * wSpeed * 0.5;
-    
-    const rAmount = Math.max(0, windParams.current.rain);
-    const sAmount = Math.max(0, windParams.current.snow);
-    const isRain = rAmount > sAmount;
-    
-    const activeCount = Math.floor(Math.min(1.0, (rAmount + sAmount) / 5) * count);
-
-    if (!pointsRef.current) return;
-
-    if (activeCount === 0 && rAmount < 0.01 && sAmount < 0.01) {
-        if (!isHiddenRef.current) {
-            const pos = pointsRef.current.geometry.attributes.position.array as Float32Array;
-            for (let i = 0; i < count; i++) {
-                pos[i * 3 + 1] = 200;
-            }
-            pointsRef.current.geometry.attributes.position.needsUpdate = true;
-            
-            if (splashesRef.current) {
-               const sPos = splashesRef.current.geometry.attributes.position.array as Float32Array;
-               for (let i = 0; i < splashCount; i++) {
-                   sPos[i * 3 + 1] = -100;
-               }
-               splashesRef.current.geometry.attributes.position.needsUpdate = true;
-            }
-            isHiddenRef.current = true;
-        }
-        return;
-    }
-    
-    isHiddenRef.current = false;
-    
-    const pos = pointsRef.current.geometry.attributes.position.array as Float32Array;
-    const time = state.clock.getElapsedTime();
-    const fallSpeed = isRain ? 40 : 25;
-    
-    const sPos = splashesRef.current ? splashesRef.current.geometry.attributes.position.array as Float32Array : null;
-    
-    if (sPos) {
-        for (let i = 0; i < splashCount; i++) {
-            if (splashLife.current[i] > 0) {
-                splashLife.current[i] -= d * 4; // lives for 0.25 seconds
-                sPos[i * 3 + 1] += d * (isRain ? 3 : 1.5);
-                sPos[i * 3] += wX * d * 0.5;
-                sPos[i * 3 + 2] += wZ * d * 0.5;
-                if (splashLife.current[i] <= 0) {
-                    sPos[i * 3 + 1] = -100;
-                }
-            }
-        }
-    }
-
-    let searchIdx = 0;
-
-    for (let i = 0; i < count; i++) {
-       if (i >= activeCount) {
-          pos[i * 3 + 1] = 200;
-          continue;
-       }
-
-       if (pos[i * 3 + 1] > 150) {
-          pos[i * 3 + 1] = 100 + Math.random() * 20;
-       }
-       
-       pos[i * 3 + 1] -= fallSpeed * d;
-       
-       let dx = wX * d;
-       let dz = wZ * d;
-       
-       if (!isRain) {
-          dx += Math.sin(time + i) * 3 * d; 
-          dz += Math.cos(time + i * 0.5) * 3 * d;
-       }
-       
-       pos[i * 3] += dx;
-       pos[i * 3 + 2] += dz;
-       
-       if (pos[i * 3 + 1] <= 0) {
-          if (sPos && i % (isRain ? 4 : 8) === 0) {
-              while (searchIdx < splashCount && splashLife.current[searchIdx] > 0) {
-                  searchIdx++;
-              }
-              if (searchIdx < splashCount) {
-                  sPos[searchIdx * 3] = pos[i * 3];
-                  sPos[searchIdx * 3 + 1] = 0.1;
-                  sPos[searchIdx * 3 + 2] = pos[i * 3 + 2];
-                  splashLife.current[searchIdx] = 1.0;
-              }
-          }
-          pos[i * 3 + 1] = 100 + Math.random() * 20;
-          pos[i * 3] = (Math.random() - 0.5) * 150;
-          pos[i * 3 + 2] = (Math.random() - 0.5) * 150;
-       }
-    }
-    
-    if (sPos) {
-       splashesRef.current!.geometry.attributes.position.needsUpdate = true;
-    }
-    
-    pointsRef.current.geometry.attributes.position.needsUpdate = true;
+  useFrame((_, delta) => {
+    const fog = fogRef.current;
+    if (!fog) return;
+    const d = Math.min(0.05, delta);
+    const targetDensity = Math.max(0, Math.min(1, target.current.fog)) * FOG_MAX_DENSITY;
+    fog.density = THREE.MathUtils.lerp(fog.density, targetDensity, d * 1.8);
+    scratch.copy(target.current.isNight ? nightColor : dayColor);
+    fog.color.lerp(scratch, d * 1.8);
   });
 
-  return (
-    <>
-      <points ref={pointsRef}>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[positions, 3]}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          size={rain > snow ? 0.3 : 0.6}
-          color={rain > snow ? "#88aaff" : "#ffffff"}
-          transparent
-          opacity={0.6}
-          sizeAttenuation
-          depthWrite={false}
-        />
-      </points>
-      <points ref={splashesRef}>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[splashPositions, 3]}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          size={0.4}
-          color="#aaccff"
-          transparent
-          opacity={0.5}
-          sizeAttenuation
-          depthWrite={false}
-        />
-      </points>
-    </>
-  );
+  return null;
 };
 
-export const WeatherLayer = ({ tex }: { tex: any }) => {
-  const [weather, setWeather] = useState({ rain: weatherState.rain, snow: weatherState.snow });
+export const WeatherLayer = () => {
+  const [weather, setWeather] = useState({
+    rain: weatherState.rain,
+    snow: weatherState.snow,
+    storm: weatherState.storm,
+    windSpeed: weatherState.windSpeed,
+    windDir: weatherState.windDir,
+  });
   useEffect(() => {
-    const unsubscribe = weatherState.subscribe((state) => {
-      setWeather({ rain: state.rain, snow: state.snow });
+    const unsubscribe = weatherState.subscribe((s) => {
+      setWeather({ rain: s.rain, snow: s.snow, storm: s.storm, windSpeed: s.windSpeed, windDir: s.windDir });
     });
     return () => { unsubscribe(); };
   }, []);
 
   return (
     <>
-      <WeatherEffects rainIntensity={weather.rain} snowIntensity={weather.snow} />
+      <WeatherEffects
+        rainIntensity={weather.rain}
+        snowIntensity={weather.snow}
+        windSpeed={weather.windSpeed}
+        windDir={weather.windDir}
+      />
+      <Lightning active={weather.storm > 0} />
+      <FogController />
     </>
   );
 };

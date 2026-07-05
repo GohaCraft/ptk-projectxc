@@ -10,3 +10,4 @@ coverage/
 out/
 dist-desktop/
 desktop/output/
+tsconfig.tsbuildinfo

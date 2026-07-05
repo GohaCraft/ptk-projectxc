@@ -2,8 +2,8 @@
 
 import React, { useRef, Suspense, useState, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Preload, SoftShadows } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Text, Preload, SoftShadows, PerformanceMonitor } from '@react-three/drei';
 
 import { CameraManager } from '../controls/CameraManager';
 import { WeatherLayer } from './Weather';
@@ -11,7 +11,6 @@ import { Lighting } from './Lighting';
 import DynamicSun from './DynamicSun';
 
 import {
-  getProceduralTextures,
   PanelMaterial,
   StuccoMaterial,
   BrickMaterial,
@@ -29,16 +28,17 @@ import {
   MetalPlatform,
   SolidWall,
   MuralMosaic,
-  BlueprintOverlay,
   AsphaltBlueprintBoard,
   RoofTop,
   WindowsGroup,
   SlicedRib,
   Staircase,
-  CanopyLights
+  CanopyLights,
+  WindowQualityContext
 } from './ArchitecturalModules';
 
 import ReactPdfFloorOverlay from './ReactPdfFloorOverlay';
+import { RoomLabels3D } from './RoomLabels3D';
 import { FloorBlueprintPDF } from './FloorBlueprintPDF';
 import { PlanUnderlay } from './PlanUnderlay';
 
@@ -47,18 +47,11 @@ import {
   RussianFlag,
   Ducts,
   AirDucts3D,
-  CarpetRack,
-  WorkoutArea,
   AddressSign
 } from './VisualProps';
 
 import {
-  DynamicTree,
-  StreetLantern,
-  CourtyardBench,
-  CompoundFence,
-  CompoundLandscape,
-  DynamicBirdsFlock
+  CompoundLandscape
 } from './EnvironmentProps';
 
 import {
@@ -72,38 +65,19 @@ import {
   clampWallToBuilding
 } from './CustomWalls';
 import { InteractiveZone, INTERACTIVE_ZONES } from '../data/interactiveZones';
+import { APP_SETTINGS } from '../../config/appSettings';
+import { maxDprForTier } from '../data/perfOptimizer';
+import {
+  FrameTracker,
+  FpsTracker,
+  ShadowThrottle,
+  ShadowCasterCuller,
+  PerfStats,
+} from './SceneHelpers';
 
 // Export types and functions for external compatibility (e.g. BuildingModelViewer)
 export type { CustomWall, InteractiveZone };
 export { generateAllDefaultWalls, clampWallToBuilding, INTERACTIVE_ZONES };
-
-function FrameTracker({ onReady }: { onReady: () => void }) {
-  const called = useRef(false);
-  useFrame(() => {
-    if (!called.current) {
-      called.current = true;
-      onReady();
-    }
-  });
-  return null;
-}
-
-function FpsTracker({ onFpsUpdate }: { onFpsUpdate: (fps: number) => void }) {
-  const frameCount = useRef(0);
-  const lastTime = useRef(performance.now());
-  
-  useFrame(() => {
-    frameCount.current++;
-    const now = performance.now();
-    if (now - lastTime.current >= 1000) {
-      const fps = Math.round((frameCount.current * 1000) / (now - lastTime.current));
-      onFpsUpdate(fps);
-      frameCount.current = 0;
-      lastTime.current = now;
-    }
-  });
-  return null;
-}
 
 export interface Scene3DProps {
   activeFloor: number;
@@ -130,11 +104,16 @@ export interface Scene3DProps {
   onWallMove: (id: string, nextX: number, nextZ: number) => void;
   firstFrameReady: boolean;
   setFirstFrameReady: (val: boolean) => void;
+  resetSignal?: number;
   selectedZone: InteractiveZone | null;
   setSelectedZone: (zone: InteractiveZone | null) => void;
   lightingMode?: 'noon' | 'sunset' | 'night' | 'realtime';
   onFpsUpdate?: (fps: number) => void;
-  
+  /** Диагностика: FPS + draw calls + треугольники (для перф-оверлея). */
+  onPerfStats?: (s: { fps: number; calls: number; tris: number }) => void;
+  /** Когда true — цикл рендера приостановлен (меню открыто): сцена не грузит GPU. */
+  paused?: boolean;
+
   // 50-point precision audit fields
   auditState: 'idle' | 'running' | 'success' | 'failed';
   auditProgress: number;
@@ -166,16 +145,24 @@ export default function Scene3D({
   onWallMove,
   firstFrameReady,
   setFirstFrameReady,
+  resetSignal = 0,
   selectedZone,
   setSelectedZone,
   lightingMode = 'noon',
   onFpsUpdate,
+  onPerfStats,
+  paused = false,
   auditState,
   auditProgress,
   auditRound,
 }: Scene3DProps) {
   const controlsRef = useRef<any>(null);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
+
+  // Адаптивное разрешение: верхняя планка по тиру, PerformanceMonitor сам понижает/поднимает
+  const maxDpr = maxDprForTier(perfTier);
+  const [dpr, setDpr] = useState(maxDpr);
+  useEffect(() => { setDpr(maxDpr); }, [maxDpr]);
 
   // Math for real-time laser guides and block origins
   const activeFloorIdx = useMemo(() => {
@@ -242,19 +229,27 @@ export default function Scene3D({
     };
   }, [selectedWallObject, helperWeights]);
   
-  const tex = useMemo(() => {
-    return (typeof window !== 'undefined') ? getProceduralTextures() : null;
-  }, []);
-
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="3d-scene-container">
       <Canvas
         style={{ width: '100%', height: '100%', display: 'block' }}
-        shadows={perfTier !== 'low'}
-        dpr={perfTier === 'low' ? [1, 1.15] : perfTier === 'medium' ? [1, 1.40] : [1, 1.75]}
+        // Пока открыто меню (paused) — режим 'demand': кадры рендерятся только при
+        // изменениях (загрузка ассетов, первый кадр), а не 60 раз в секунду.
+        // Это снимает нагрузку с GPU и убирает лаги интерфейса на стартовом экране.
+        frameloop={paused ? 'demand' : 'always'}
+        shadows={APP_SETTINGS.shadows && perfTier !== 'low'}
+        dpr={dpr}
         gl={{
+          // MSAA включено — без него картинка (особенно вид сверху) сильно
+          // пикселит. Производительность добираем сокращением draw calls,
+          // а не ухудшением картинки.
           antialias: true,
-          powerPreference: 'high-performance',
+          // 'default' вместо 'high-performance': на слабой интегрированной графике
+          // (Core i3 и т.п.) запрос high-performance может срывать создание WebGL-контекста.
+          powerPreference: 'default',
+          // Разрешаем контекст даже при «слабом» GPU / программном рендере (SwiftShader),
+          // иначе браузер отказывает: "Error creating WebGL context".
+          failIfMajorPerformanceCaveat: false,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
           outputColorSpace: THREE.SRGBColorSpace,
@@ -265,21 +260,34 @@ export default function Scene3D({
           if (isEditMode && !isDraggingWall) setSelectedWallId(null);
         }}
       >
-        {perfTier !== 'low' && (
-          <SoftShadows 
-            size={perfTier === 'medium' ? 14 : 26} 
-            samples={perfTier === 'medium' ? 8 : 16} 
-            focus={0.85} 
-          />
+        {/* Мягкие тени (PCSS) — ТОЛЬКО на 'high'. PCSS-проход очень дорогой и был
+            главной причиной просадок на встроенной графике (киоск, слабые ПК).
+            На 'medium' используются стандартные PCF-тени (по умолчанию в R3F) —
+            выглядят почти так же, но в разы дешевле. */}
+        {APP_SETTINGS.shadows && perfTier === 'high' && (
+          <SoftShadows size={12} samples={5} focus={0.9} />
         )}
+        {/* Адаптивное разрешение: держим плавность, почти не теряя картинку */}
+        <PerformanceMonitor
+          flipflops={3}
+          onDecline={() => setDpr(d => Math.max(0.9, +(d - 0.1).toFixed(2)))}
+          onIncline={() => setDpr(d => Math.min(maxDpr, +(d + 0.1).toFixed(2)))}
+          onFallback={() => setDpr(0.9)}
+        />
         <Suspense fallback={null}>
+        {perfTier !== 'low' && <ShadowThrottle every={perfTier === 'high' ? 3 : 4} />}
+        {APP_SETTINGS.shadows && perfTier !== 'low' && (
+          <ShadowCasterCuller minSize={1.6} deps={[activeFloor, perfTier, customWalls.length, resetSignal]} />
+        )}
         {onFpsUpdate && <FpsTracker onFpsUpdate={onFpsUpdate} />}
+        {onPerfStats && <PerfStats onStats={onPerfStats} />}
         <Lighting />
-        <DynamicSun lightingMode={lightingMode} />
+        <DynamicSun lightingMode={lightingMode} perfTier={perfTier} />
 
-        {/* Земля с лужами и эффекты погоды */}
-        <WeatherLayer tex={tex} />
+        {/* Осадки, ветер и молнии грозы */}
+        <WeatherLayer />
 
+        <WindowQualityContext.Provider value={perfTier}>
         <group position={[0, 0, 0]}>
 
           {/* ════════════════════════════════════════════════════ */}
@@ -980,10 +988,11 @@ export default function Scene3D({
 
           {/* AsphaltBlueprintBoard отключён */}
 
-
+          {/* Номера аудиторий над кабинетами — только для активного этажа */}
+          <RoomLabels3D activeFloor={activeFloor} />
 
           {/* Интерактивные зоны интерьера во внутреннем пространстве */}
-          {INTERACTIVE_ZONES.map((zone) => {
+          {APP_SETTINGS.zonesEnabled && INTERACTIVE_ZONES.map((zone) => {
             const isZoneOnActiveFloor = activeFloor === 5 || activeFloor === zone.floor;
             if (!isZoneOnActiveFloor) return null;
 
@@ -1044,6 +1053,7 @@ export default function Scene3D({
             );
           })}
         </group>
+        </WindowQualityContext.Provider>
 
         {/* ========================================================= */}
         {/* CAD ROBLOX PRECISION ACTIVE FLOOR GRIDS & LASERS        */}
@@ -1186,7 +1196,7 @@ export default function Scene3D({
           enableRotate={cameraMode === 'orbit' && !isDraggingWall}
           enabled={cameraMode !== 'flight' && !isDraggingWall}
         />
-        <CameraManager controlsRef={controlsRef} activeFloor={activeFloor} cameraMode={cameraMode} selectedZone={selectedZone} />
+        <CameraManager controlsRef={controlsRef} activeFloor={activeFloor} cameraMode={cameraMode} selectedZone={selectedZone} resetSignal={resetSignal} />
         
         <Preload all />
         <FrameTracker onReady={() => setFirstFrameReady(true)} />

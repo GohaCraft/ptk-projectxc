@@ -1,17 +1,33 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, Cloud, Wind, Sun, Moon, Compass } from 'lucide-react';
+import { Layers, Cloud, Wind, Sun, Moon, Compass, CloudRain, CloudSnow, Zap, RefreshCw, Power } from 'lucide-react';
+import { weatherState, WeatherMode } from '../data/weatherState';
 
 import WallEditorUI from './WallEditorUI';
+import FlightJoystick from './FlightJoystick';
 import StartMenu from './StartMenu';
+import ErrorOverlay from './ErrorOverlay';
+import UpdateBanner from './UpdateBanner';
+import ZonesLockedMeme from './ZonesLockedMeme';
+import IdleResetOverlay from './IdleResetOverlay';
 import { CustomLoader } from './CustomLoader';
 import WebGLBoundary from './WebGLBoundary';
+import { APP_SETTINGS } from '../../config/appSettings';
+import { reportError, clearError } from '../data/errorState';
 import { CustomWall, generateAllDefaultWalls, clampWallToBuilding } from '../graphics/CustomWalls';
 import { InteractiveZone } from '../data/interactiveZones';
 import ZoneInteriorsUI from './ZoneInteriorsUI';
+import {
+  PerfTier,
+  isWeakGpu,
+  pickInitialTier,
+  nextLowerTier,
+  shouldDowngrade,
+  FPS_HISTORY_SIZE,
+} from '../data/perfOptimizer';
 
 // Lazy load Scene3D so that 3D rendering context is only loaded on browser environment
 const Scene3D = dynamic(() => import('../graphics/Scene3D'), {
@@ -28,25 +44,103 @@ export default function BuildingModelViewer() {
   const [activeFloor, setActiveFloor] = useState(6);
   const [hasStarted, setHasStarted] = useState(false);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
+  // Счётчик «жёсткого сброса» камеры: при изменении CameraManager возвращает
+  // камеру/цель в исходную позицию (OrbitControls сам это не делает).
+  const [resetSignal, setResetSignal] = useState(0);
+
+  // Страховка: если «первый кадр» не отметился (на некоторых браузерах/GPU
+  // useFrame может не успеть до скрытия лоадера), всё равно показываем сцену,
+  // чтобы модель не оставалась невидимой при рабочем WebGL.
+  useEffect(() => {
+    if (!hasStarted || firstFrameReady) return;
+    const t = setTimeout(() => setFirstFrameReady(true), 4000);
+    return () => clearTimeout(t);
+  }, [hasStarted, firstFrameReady]);
+
   const [isAnimating, setIsAnimating] = useState(false);
   const [wallsOpacity, setWallsOpacity] = useState(1.0);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'flight'>('orbit');
-  const [perfTier, setPerfTier] = useState<'low' | 'medium' | 'high'>('high');
+  const [perfTier, setPerfTier] = useState<PerfTier>('high');
 
-  const [lightingMode] = useState<'noon' | 'sunset' | 'night' | 'realtime'>('realtime');
+  // Время суток: по реальному времени (realtime) или фиксированный день (noon) — по настройке
+  const [lightingMode] = useState<'noon' | 'sunset' | 'night' | 'realtime'>(
+    APP_SETTINGS.timeOfDayByApi ? 'realtime' : 'noon'
+  );
   const [autoOptimize] = useState(true);
   const [fps, setFps] = useState(0);
-  const [fpsHistory, setFpsHistory] = useState<number[]>([]);
+  const [perfStats, setPerfStats] = useState<{ fps: number; calls: number; tris: number } | null>(null);
+  const [showPerf, setShowPerf] = useState(false);
+
+  // Перф-оверлей (диагностика): включается ?perf=1 в URL или клавишей F8.
+  // По умолчанию выключен — на киоске его не видно.
+  useEffect(() => {
+    try {
+      const on = new URLSearchParams(window.location.search).get('perf') === '1';
+      if (on) { setShowPerf(true); (window as any).__perfDebug = true; }
+    } catch {}
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F8') {
+        setShowPerf((v) => { (window as any).__perfDebug = !v; return !v; });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // История FPS для грубого понижения тира. Ref, а не state: значение нужно
+  // только внутри эффекта и не влияет на рендер.
+  const fpsHistoryRef = useRef<number[]>([]);
   const [optimizationNotice, setOptimizationNotice] = useState<string | null>(null);
-  const [weatherData, setWeatherData] = useState<any>(null);
+  const [weatherMode, setWeatherMode] = useState<WeatherMode | 'auto'>(
+    APP_SETTINGS.weatherByApi ? 'auto' : 'clear'
+  );
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  const applyWeather = (mode: WeatherMode | 'auto') => {
+    setWeatherMode(mode);
+    weatherState.setManual(mode === 'auto' ? null : mode);
+  };
+
+  // Настройка «погода по API»: если выключена — фиксируем ясную погоду (без интернета)
+  useEffect(() => {
+    if (!APP_SETTINGS.weatherByApi) {
+      weatherState.setManual('clear');
+    }
+  }, []);
+
+  // Кнопка «выключения» (как на пульте): возврат на начальный экран + сброс всех изменений сессии
+  const handlePowerOff = () => {
+    // Сброс вида и режимов
+    setHasStarted(false);
+    setSelectedZone(null);
+    setCameraMode('orbit');
+    setActiveFloor(6);
+    setIsAnimating(false);
+    // Погода обратно на значение по умолчанию (API или ясно — по настройке)
+    applyWeather(APP_SETTINGS.weatherByApi ? 'auto' : 'clear');
+    // Выходим из редактора и сбрасываем несохранённые правки стен к исходным
+    setIsEditMode(false);
+    setIsEditorCollapsed(false);
+    setSelectedWallId(null);
+    setIsDraggingWall(false);
+    setEditorMessage(null);
+    setIsResetConfirming(false);
+    setCustomWalls(originalWalls);
+    // Сброс аудита точности
+    setAuditState('idle');
+    setAuditProgress(0);
+    setAuditLogs([]);
+    // Жёсткий возврат камеры в исходную позицию/цель (иначе остаётся где была)
+    setResetSignal((s) => s + 1);
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
         console.log('SW registered successfully:', reg);
+        clearError(401);
       }).catch((e) => {
         console.warn('SW registration failed:', e);
+        reportError(401);
       });
     }
 
@@ -62,32 +156,11 @@ export default function BuildingModelViewer() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const fetchWeather = async () => {
-      try {
-        const res = await fetch("/api/weather");
-        if (res.ok && active) {
-          const json = await res.json();
-          setWeatherData(json);
-        }
-      } catch (err) {
-        console.warn("Failed to fetch weather in UI:", err);
-      }
-    };
-    fetchWeather();
-    const interval = setInterval(fetchWeather, 4 * 60 * 1000); // 4 минутный интервал
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
   const [selectedZone, setSelectedZone] = useState<InteractiveZone | null>(null);
 
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [originalWalls, setOriginalWalls] = useState<CustomWall[]>([]);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(APP_SETTINGS.wallEditor);
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [isDraggingWall, setIsDraggingWall] = useState(false);
@@ -453,28 +526,36 @@ export default function BuildingModelViewer() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|Macintosh|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
-      const cores = navigator.hardwareConcurrency || 4;
-      
-      if (isMobileDevice || cores < 4) {
-        setPerfTier('low');
-        console.log("[Auto-Optimization] Low-end / Mobile device detected. Pixel ratios locked, shadows & postprocessing simplified.");
-      } else if (cores < 8) {
-        setPerfTier('medium');
-        console.log("[Auto-Optimization] Mid-range device detected. Balancing quality and presentation framerates.");
-      } else {
-        setPerfTier('high');
-        console.log("[Auto-Optimization] High-end workstation detected. Full cinematic bloom and soft microshadow configurations allowed.");
+    if (typeof window === 'undefined') return;
+
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 2);
+    const cores = navigator.hardwareConcurrency || 4;
+
+    // Проверка GPU: встройки/софт-рендер -> ограничиваем качество (ядра != мощность GPU).
+    // Контекст-зонд сразу освобождаем, чтобы не тратить лимит WebGL-контекстов браузера.
+    let renderer = '';
+    try {
+      const c = document.createElement('canvas');
+      const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) renderer = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
       }
-    }
+    } catch {}
+
+    const tier = pickInitialTier({ isMobile, cores, weakGpu: isWeakGpu(renderer) });
+    setPerfTier(tier);
+    console.log(`[Auto-Optimization] GPU: ${renderer || 'unknown'} | cores: ${cores} -> ${tier.toUpperCase()}`);
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     // v87: стены трассированы прямо с чертежа БТИ (per-wing калибровка),
     // загружаются из /walls.json. Бамп версии сбрасывает старый кэш.
-    const WALLS_VERSION = "v91_bti_clean";
+    const WALLS_VERSION = "v129_render";
     const defaults = generateAllDefaultWalls();
 
     const applyTraced = async (): Promise<boolean> => {
@@ -493,8 +574,10 @@ export default function BuildingModelViewer() {
         setCustomWalls(walls);
         setOriginalWalls(walls);
         localStorage.setItem('npc_custom_walls', JSON.stringify(walls));
+        clearError(201);
         return true;
       } catch {
+        reportError(201);
         return false;
       }
     };
@@ -686,26 +769,27 @@ export default function BuildingModelViewer() {
     }, 4500);
   };
 
+  // Грубое понижение тира — запасной вариант, тонкую регулировку DPR уже делает
+  // PerformanceMonitor. Логика вынесена из апдейтера setState (он должен быть
+  // чистым: в StrictMode апдейтер вызывается дважды и раньше дублировал понижения).
   useEffect(() => {
     if (!hasStarted || !autoOptimize || fps <= 0) return;
-    
-    setFpsHistory(prev => {
-      const next = [...prev, fps].slice(-5);
-      
-      // Если производительность падает ниже 44 кадров в секунду на протяжении 4 секунд:
-      if (next.length >= 4 && next.every(v => v < 44)) {
-        if (perfTier === 'high') {
-          setPerfTier('medium');
-          triggerNotification('Авто-оптимизация: снижено до СРЕДНЕГО качества (кадры ниже 44)');
-          return [];
-        } else if (perfTier === 'medium') {
-          setPerfTier('low');
-          triggerNotification('Авто-оптимизация: ТЕНИ ВЫКЛЮЧЕНЫ для плавности 4K (кадры ниже 44)');
-          return [];
-        }
-      }
-      return next;
-    });
+
+    const history = [...fpsHistoryRef.current, fps].slice(-FPS_HISTORY_SIZE);
+    fpsHistoryRef.current = history;
+
+    if (!shouldDowngrade(history)) return;
+
+    const lower = nextLowerTier(perfTier);
+    if (!lower) return;
+
+    setPerfTier(lower);
+    fpsHistoryRef.current = []; // копим историю заново, чтобы не падать сразу на 2 тира
+    triggerNotification(
+      lower === 'low'
+        ? 'Авто-оптимизация: тени отключены для плавности (стабильно низкий FPS)'
+        : 'Авто-оптимизация: качество снижено до СРЕДНЕГО (стабильно низкий FPS)'
+    );
   }, [fps, autoOptimize, perfTier, hasStarted]);
 
   const handleFloorChange = (newFloor: number) => {
@@ -718,18 +802,38 @@ export default function BuildingModelViewer() {
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#0f172a]" id="model-viewer-layout">
+    <div className="ui-readable relative w-full h-full overflow-hidden bg-[#0f172a]" id="model-viewer-layout">
+      {/* Плашка авто-обновления (только в .exe; в вебе ничего не рисует) */}
+      <UpdateBanner />
+
       {/* Offline Status indicator */}
       {!isOnline && (
         <div 
           id="offline_status_indicator"
-          className="absolute left-4 md:left-6 top-[15px] pointer-events-auto z-50 bg-amber-950/92 border border-amber-800/80 backdrop-blur-xl px-3 py-1.5 rounded-xl shadow-2xl flex items-center gap-2 text-slate-200 animate-pulse font-mono text-[9px] select-none"
+          className="absolute left-20 md:left-[88px] top-[19px] pointer-events-auto z-50 bg-amber-950/92 border border-amber-800/80 backdrop-blur-xl px-3 py-1.5 rounded-xl shadow-2xl flex items-center gap-2 text-slate-200 animate-pulse font-mono text-[9px] select-none"
         >
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
           </span>
           <span className="font-bold tracking-wider uppercase">Автономный режим • Данные сохраняются локально</span>
+        </div>
+      )}
+
+      {/* Перф-оверлей диагностики (F8 / ?perf=1). Зелёный = хорошо, красный = тяжело. */}
+      {showPerf && perfStats && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[70] pointer-events-none font-mono text-[11px] leading-tight bg-black/80 border border-white/15 rounded-lg px-3 py-2 text-slate-100 shadow-2xl">
+          <span style={{ color: perfStats.fps >= 50 ? '#4ade80' : perfStats.fps >= 30 ? '#facc15' : '#f87171' }}>
+            {perfStats.fps} FPS
+          </span>
+          <span className="text-slate-400"> · </span>
+          <span style={{ color: perfStats.calls <= 200 ? '#4ade80' : perfStats.calls <= 500 ? '#facc15' : '#f87171' }}>
+            {perfStats.calls} draw calls
+          </span>
+          <span className="text-slate-400"> · </span>
+          <span className="text-slate-300">{Number.isFinite(perfStats.tris) ? (perfStats.tris / 1000).toFixed(0) : '—'}k tris</span>
+          <span className="text-slate-400"> · </span>
+          <span className="text-sky-300">{perfTier}</span>
         </div>
       )}
 
@@ -752,19 +856,20 @@ export default function BuildingModelViewer() {
           setSelectedWallId={setSelectedWallId}
           isDraggingWall={isDraggingWall}
           setIsDraggingWall={setIsDraggingWall}
-          blueprintImage={blueprintImage}
-          blueprintPdf={blueprintPdf}
+          blueprintImage={APP_SETTINGS.blueprints ? blueprintImage : null}
+          blueprintPdf={APP_SETTINGS.blueprints ? blueprintPdf : null}
           blueprintPdfPage={blueprintPdfPage}
           blueprintOpacity={blueprintOpacity}
           blueprintScale={blueprintScale}
           blueprintOffset={blueprintOffset}
           blueprintHeightOffset={blueprintHeightOffset}
-          showProceduralBlueprint={showProceduralBlueprint}
-          showBlueprintFloor={showBlueprintFloor}
+          showProceduralBlueprint={APP_SETTINGS.blueprints && showProceduralBlueprint}
+          showBlueprintFloor={APP_SETTINGS.blueprints && showBlueprintFloor}
           blueprintFloorUrl="/blueprint_floors.pdf"
           onWallMove={handleWallMoveIn3D}
           firstFrameReady={firstFrameReady}
           setFirstFrameReady={setFirstFrameReady}
+          resetSignal={resetSignal}
           selectedZone={selectedZone}
           setSelectedZone={(zone) => {
             setSelectedZone(zone);
@@ -777,6 +882,8 @@ export default function BuildingModelViewer() {
           }}
           lightingMode={lightingMode}
           onFpsUpdate={setFps}
+          onPerfStats={setPerfStats}
+          paused={!hasStarted}
           auditState={auditState}
           auditProgress={auditProgress}
           auditRound={auditRound}
@@ -863,6 +970,7 @@ export default function BuildingModelViewer() {
             className="absolute inset-0 z-40"
           >
             <StartMenu
+              locked={APP_SETTINGS.modelLocked}
               onStart={() => {
                 setHasStarted(true);
                 setCameraMode('orbit');
@@ -873,13 +981,37 @@ export default function BuildingModelViewer() {
         )}
       </AnimatePresence>
 
+      {/* Плашка ошибок (номер сверху, место снизу) */}
+      <ErrorOverlay />
+
+      {/* Пасхалка «six seven»: если зоны отключены — две руки «ЗОНЫ / ЗАБЛОКИРОВАНЫ» */}
+      {hasStarted && !selectedZone && !APP_SETTINGS.zonesEnabled && <ZonesLockedMeme />}
+
+      {/* Кнопка выключения (возврат на начальный экран + сброс изменений) */}
+      {hasStarted && !selectedZone && (
+        <button
+          id="btn_power_off"
+          onClick={handlePowerOff}
+          title="Выключить — вернуться в начальное меню и сбросить изменения"
+          className="group absolute right-4 md:right-6 top-4 md:top-6 z-30 pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center bg-[#0c0d12]/92 backdrop-blur-3xl border border-slate-800/80 shadow-2xl text-slate-300 hover:text-white hover:border-red-500/70 hover:bg-red-950/40 transition-all duration-300 cursor-pointer animate-fade-in"
+        >
+          <Power size={17} className="text-slate-300 group-hover:text-red-400 transition-colors" strokeWidth={2.4} />
+        </button>
+      )}
+
+      {/* Экранный джойстик для режима «Облёт» (киоск без клавиатуры) */}
+      {hasStarted && !selectedZone && cameraMode === 'flight' && <FlightJoystick />}
+
+      {/* Авто-возврат на стартовый экран при бездействии (2 мин -> отсчёт 10с) */}
+      <IdleResetOverlay active={hasStarted} onTimeout={handlePowerOff} />
+
       {/* Cyberpunk floor selector overlay */}
       {hasStarted && (
         <div id="floor_selector_container" className="absolute right-4 md:right-6 top-1/2 -translate-y-1/2 pointer-events-auto flex flex-col items-center gap-3 z-10 w-16 select-none animate-fade-in">
           <div className="bg-[#0c0d12]/92 backdrop-blur-3xl p-2.5 rounded-2xl border border-slate-800/80 shadow-2xl text-slate-200 flex flex-col items-center gap-2">
             <div className="flex flex-col items-center border-b border-slate-800/40 pb-2 mb-1">
               <Layers size={13} className="text-slate-400 mb-1" />
-              <span className="font-mono text-[7px] text-slate-350 tracking-[0.1em] uppercase font-bold text-center">ЭТАЖ</span>
+              <span className="font-mono text-[7px] text-slate-400 tracking-[0.1em] uppercase font-bold text-center">ЭТАЖ</span>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -910,7 +1042,7 @@ export default function BuildingModelViewer() {
                             : 'bg-white border-white text-slate-950 font-bold scale-105 shadow-[0_4px_12px_rgba(255,255,255,0.15)]')
                         : (isAnimating 
                             ? 'opacity-40 pointer-events-none' 
-                            : 'bg-[#121319]/80 border-slate-850 text-slate-200 hover:text-white hover:border-slate-500 hover:bg-slate-800 shadow-sm font-semibold')
+                            : 'bg-[#121319]/80 border-slate-700/70 text-slate-200 hover:text-white hover:border-slate-500 hover:bg-slate-800 shadow-sm font-semibold')
                     }`}
                   >
                     <span className="text-xs font-mono tracking-tight">

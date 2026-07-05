@@ -319,19 +319,25 @@ export const CustomWallItem = ({
     return () => { ctrl.removeEventListener('dragging-changed', handler); onDragChangeRef.current?.(false); };
   }, [isSelected, meshObj]);
 
-  let color = wall.color || '#94a3b8';
+  let color = wall.color || '#b4b8be'; // светло-серый в режиме просмотра
   let opacity = wallsOpacity;
   let transparentVal = wallsOpacity < 1.0;
 
-  if (isRemoved) {
-    color = '#ef4444'; // Red for removed
-    opacity = wallsOpacity * 0.45;
+  if (isEditMode) {
+    // Цветовая подсветка (добавлено/удалено/выбрано) — только при редактировании
+    if (isRemoved) {
+      color = '#ef4444'; // Red for removed
+      opacity = wallsOpacity * 0.45;
+      transparentVal = true;
+    } else if (isAdded) {
+      color = isSelected ? '#22c55e' : '#10b981'; // Green for added
+    } else {
+      color = isSelected ? '#22c55e' : isFixed ? '#475569' : '#3b82f6';
+    }
+  } else if (isRemoved) {
+    // В просмотре удалённые стены не показываем
+    opacity = 0;
     transparentVal = true;
-  } else if (isAdded) {
-    color = '#10b981'; // Green for added
-    if (isSelected) color = '#22c55e';
-  } else if (isEditMode) {
-    color = isSelected ? '#22c55e' : isFixed ? '#475569' : '#3b82f6';
   }
 
   return (

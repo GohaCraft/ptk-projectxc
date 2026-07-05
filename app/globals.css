@@ -10,3 +10,79 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+/* Читаемость UI-оверлеев поверх 3D-сцены: тень у текста (наследуется) и
+   drop-shadow у иконок — чтобы не сливались со светлым фоном (снег/белые стены). */
+.ui-readable { text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.45); }
+.ui-readable svg { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.7)); }
+
+/* Скрыть полосу прокрутки (но прокрутка работает) */
+.scrollbar-none::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Переливающаяся мини-плашка версии */
+@keyframes ch-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.ch-badge { background-size: 200% 100%; animation: ch-shimmer 2.6s linear infinite; }
+
+/* ── Стартовое меню: лёгкие анимации (только compositor: transform / background-position,
+   без покадрового blur — в отличие от старого фона, это почти бесплатно для GPU) ── */
+@keyframes menu-orbit { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.menu-orbit { animation: menu-orbit 60s linear infinite; will-change: transform; }
+
+@keyframes menu-text-shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+.menu-text-shimmer { background-size: 200% auto; animation: menu-text-shimmer 7s linear infinite; }
+
+/* ───────────────── НАВИГАТОР: анимации ───────────────── */
+
+/* «Бегущие» штрихи вдоль маршрута — показывают направление движения */
+@keyframes nav-dash { to { stroke-dashoffset: -32; } }
+.nav-route-flow { animation: nav-dash 0.9s linear infinite; }
+
+/* Пульсация колец у маркеров */
+@keyframes nav-pulse {
+  0%   { transform: scale(1);    opacity: 0.7; }
+  70%  { transform: scale(1.7);  opacity: 0;   }
+  100% { transform: scale(1.7);  opacity: 0;   }
+}
+.nav-pulse { transform-box: fill-box; transform-origin: center; animation: nav-pulse 2.2s ease-out infinite; }
+
+/* Плавное появление карты при смене этажа / выборе кабинета */
+@keyframes nav-fade { from { opacity: 0; } to { opacity: 1; } }
+.nav-fade { animation: nav-fade 0.45s ease-out; }
+
+/* Появление-«всплытие» маркера цели */
+@keyframes nav-pop {
+  0%   { transform: scale(0.2); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.nav-pop { transform-box: fill-box; transform-origin: center; animation: nav-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+
+/* Появление элементов списка */
+@keyframes nav-slide-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.nav-slide-in { animation: nav-slide-in 0.35s ease-out both; }
+
+/* СВЕТЛАЯ тема: мягко дрейфующие цветные «облака» на фоне */
+@keyframes nav-blob {
+  0%   { transform: translate(0,0) scale(1); }
+  33%  { transform: translate(40px,-30px) scale(1.12); }
+  66%  { transform: translate(-30px,25px) scale(0.92); }
+  100% { transform: translate(0,0) scale(1); }
+}
+.nav-blob { animation: nav-blob var(--dur,18s) ease-in-out infinite; will-change: transform; }
+
+/* ТЁМНАЯ тема: мерцание «звёзд» */
+@keyframes nav-twinkle {
+  0%,100% { opacity: 0.15; }
+  50%     { opacity: 0.9; }
+}
+.nav-twinkle { animation: nav-twinkle var(--dur,4s) ease-in-out infinite; }
+
+/* Иконка переключения темы — плавный поворот */
+.nav-theme-icon { transition: transform 0.5s cubic-bezier(.34,1.56,.64,1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-route-flow, .nav-pulse, .nav-fade, .nav-pop, .nav-slide-in, .nav-blob, .nav-twinkle,
+  .menu-orbit, .menu-text-shimmer { animation: none !important; }
+}
+
