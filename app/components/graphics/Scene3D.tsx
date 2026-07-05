@@ -38,6 +38,7 @@ import {
 } from './ArchitecturalModules';
 
 import ReactPdfFloorOverlay from './ReactPdfFloorOverlay';
+import { RoomLabels3D } from './RoomLabels3D';
 import { FloorBlueprintPDF } from './FloorBlueprintPDF';
 import { PlanUnderlay } from './PlanUnderlay';
 
@@ -987,7 +988,8 @@ export default function Scene3D({
 
           {/* AsphaltBlueprintBoard отключён */}
 
-
+          {/* Номера аудиторий над кабинетами — только для активного этажа */}
+          <RoomLabels3D activeFloor={activeFloor} />
 
           {/* Интерактивные зоны интерьера во внутреннем пространстве */}
           {APP_SETTINGS.zonesEnabled && INTERACTIVE_ZONES.map((zone) => {
