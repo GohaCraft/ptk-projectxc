@@ -12,6 +12,7 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
+import PhotoClassroom from './PhotoClassroom';
 
 export type RoomKind = 'class' | 'lab' | 'library' | 'canteen' | 'sport' | 'assembly';
 
@@ -335,6 +336,7 @@ export default function RoomScene({ id, floor }: { id: string; floor: number }) 
   else if (kind === 'canteen') body = <Canteen mats={mats} />;
   else if (kind === 'sport') body = <Sport mats={mats} />;
   else if (kind === 'assembly') body = <Assembly mats={mats} />;
+  else if (kind === 'class') body = <PhotoClassroom />; // детализированный класс «по фото»
   else body = <ClassRoom kind={kind} mats={mats} />;
   return (
     <group>
