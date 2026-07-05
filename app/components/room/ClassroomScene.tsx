@@ -328,15 +328,24 @@ function RoomLabel({ id, floor, kind }: { id: string; floor: number; kind: RoomK
   );
 }
 
+// ── Кабинеты, собранные по РЕАЛЬНЫМ ФОТО (id → сцена). ─────────────────────
+// Сюда добавляем кабинеты по мере съёмки: фото → свой компонент/вариант.
+// Остальные числовые кабинеты пока показывают типовой класс (тот же макет).
+const PHOTO_ROOMS: Record<string, React.FC> = {
+  '221': PhotoClassroom, // кабинет 221 — обстановка снята с фотографий
+};
+
 export default function RoomScene({ id, floor }: { id: string; floor: number }) {
   const mats = useMaterials();
   const kind = resolveKind(id);
+  const PhotoRoom = PHOTO_ROOMS[id];
   let body: React.ReactNode;
-  if (kind === 'library') body = <Library mats={mats} />;
+  if (PhotoRoom) body = <PhotoRoom />;
+  else if (kind === 'library') body = <Library mats={mats} />;
   else if (kind === 'canteen') body = <Canteen mats={mats} />;
   else if (kind === 'sport') body = <Sport mats={mats} />;
   else if (kind === 'assembly') body = <Assembly mats={mats} />;
-  else if (kind === 'class') body = <PhotoClassroom />; // детализированный класс «по фото»
+  else if (kind === 'class') body = <PhotoClassroom />; // типовой класс (макет 221)
   else body = <ClassRoom kind={kind} mats={mats} />;
   return (
     <group>
