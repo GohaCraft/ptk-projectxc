@@ -51,6 +51,7 @@ export default function PhotoClassroom() {
     const teal: BoxPart[] = [];
     const blue: BoxPart[] = [];
     const light: BoxPart[] = [];
+    const mint: BoxPart[] = []; // мятные трубы отопления (в цвет стен)
 
     // Парта (столешница + боковины + царга)
     const desk = (x: number, z: number) => {
@@ -80,20 +81,27 @@ export default function PhotoClassroom() {
       chair(x + 0.33, z + 0.55);
     }
 
-    // Учительский стол с монитором (справа от доски, как на фото) + стул
+    // Учительский стол с ПК — в углу У ОКНА, лицом к классу (сверено с фото)
     wood.push(
-      { args: [1.5, 0.05, 0.65], pos: [2.5, 0.76, -2.05] },
-      { args: [0.05, 0.74, 0.6], pos: [1.8, 0.37, -2.05] },
-      { args: [0.05, 0.74, 0.6], pos: [3.2, 0.37, -2.05] },
-      { args: [1.35, 0.5, 0.04], pos: [2.5, 0.5, -2.33] },
+      { args: [1.5, 0.05, 0.65], pos: [-2.55, 0.76, -2.05] },
+      { args: [0.05, 0.74, 0.6], pos: [-3.25, 0.37, -2.05] },
+      { args: [0.05, 0.74, 0.6], pos: [-1.85, 0.37, -2.05] },
+      { args: [1.35, 0.5, 0.04], pos: [-2.55, 0.5, -2.33] },
     );
     black.push(
-      { args: [0.5, 0.33, 0.035], pos: [2.5, 1.13, -2.2] },   // монитор
-      { args: [0.06, 0.2, 0.06], pos: [2.5, 0.88, -2.2] },
-      { args: [0.24, 0.02, 0.16], pos: [2.5, 0.79, -2.2] },
-      { args: [0.42, 0.02, 0.15], pos: [2.5, 0.79, -1.95] },  // клавиатура
+      { args: [0.5, 0.33, 0.035], pos: [-2.7, 1.13, -2.2] },   // монитор
+      { args: [0.06, 0.2, 0.06], pos: [-2.7, 0.88, -2.2] },
+      { args: [0.24, 0.02, 0.16], pos: [-2.7, 0.79, -2.2] },
+      { args: [0.42, 0.02, 0.15], pos: [-2.7, 0.79, -1.95] },  // клавиатура
     );
-    chair(2.5, -1.45, -1);
+    // бумаги и канцелярия на столе (по фото — стол завален работой)
+    white.push(
+      { args: [0.3, 0.04, 0.22], pos: [-2.15, 0.8, -2.0], rot: [0, 0.15, 0] },
+      { args: [0.28, 0.03, 0.2], pos: [-2.3, 0.8, -1.85], rot: [0, -0.2, 0] },
+    );
+    teal.push({ args: [0.18, 0.05, 0.14], pos: [-2.0, 0.81, -2.2] });
+    blue.push({ args: [0.14, 0.06, 0.1], pos: [-2.2, 0.81, -2.28] });
+    chair(-2.55, -1.45, -1);
 
     // Окна на левой стене (-X): рамы + импосты (белые), жалюзи (красные)
     for (const z0 of [-1.35, 1.35]) {
@@ -130,32 +138,57 @@ export default function PhotoClassroom() {
     // Плакаты-схемы в рамках на задней стене (+Z) — рамки
     for (const x of [-1.7, -0.6, 0.5, 1.6, 2.7])
       dark.push({ args: [0.62, 0.82, 0.03], pos: [x, 2.18, D / 2 - 0.08] });
-    // Рама пробкового стенда на правой стене (+X)
-    wood.push({ args: [0.03, 1.16, 1.84], pos: [W / 2 - 0.07, 1.85, 0.8] });
+    // Рама пробкового стенда на правой стене (+X), ближе к середине (по фото)
+    wood.push({ args: [0.03, 1.16, 1.84], pos: [W / 2 - 0.07, 1.85, 0.2] });
 
-    // Шкаф-стеллаж у задней стены слева + папки на полках
-    const sx = -2.85, sz = D / 2 - 0.32;
+    // Тёмный стеллаж — у стены НАПРОТИВ ОКОН, в глубине (по фото — стоит в нише)
+    const bx = W / 2 - 0.34, bz = 2.0;
     dark.push(
-      { args: [0.04, 2.1, 0.5], pos: [sx - 0.76, 1.05, sz] },
-      { args: [0.04, 2.1, 0.5], pos: [sx + 0.76, 1.05, sz] },
-      { args: [1.56, 0.04, 0.5], pos: [sx, 2.1, sz] },
-      { args: [1.56, 0.04, 0.5], pos: [sx, 0.06, sz] },
-      { args: [1.5, 0.03, 0.46], pos: [sx, 0.72, sz] },
-      { args: [1.5, 0.03, 0.46], pos: [sx, 1.4, sz] },
-      { args: [1.5, 2.06, 0.03], pos: [sx, 1.05, sz + 0.22] },
+      { args: [0.5, 2.1, 0.04], pos: [bx, 1.05, bz - 0.76] },
+      { args: [0.5, 2.1, 0.04], pos: [bx, 1.05, bz + 0.76] },
+      { args: [0.5, 0.04, 1.56], pos: [bx, 2.1, bz] },
+      { args: [0.5, 0.04, 1.56], pos: [bx, 0.06, bz] },
+      { args: [0.46, 0.03, 1.5], pos: [bx, 0.72, bz] },
+      { args: [0.46, 0.03, 1.5], pos: [bx, 1.4, bz] },
+      { args: [0.03, 2.06, 1.5], pos: [bx + 0.24, 1.05, bz] },
     );
-    for (let i = 0; i < 5; i++)
-      (i % 2 ? teal : blue).push({ args: [0.06, 0.3, 0.24], pos: [sx - 0.6 + i * 0.13, 0.9, sz - 0.05] });
+    // стопки белой бумаги на нижних полках (по фото) + папки сверху
     for (let i = 0; i < 4; i++)
-      (i % 2 ? blue : teal).push({ args: [0.06, 0.3, 0.24], pos: [sx - 0.3 + i * 0.13, 1.58, sz - 0.05] });
+      white.push({ args: [0.34, 0.1, 0.26], pos: [bx, 0.13, bz - 0.55 + i * 0.36] });
+    for (let i = 0; i < 3; i++)
+      white.push({ args: [0.3, 0.08, 0.24], pos: [bx, 0.78, bz - 0.4 + i * 0.4] });
+    for (let i = 0; i < 5; i++)
+      (i % 2 ? teal : blue).push({ args: [0.24, 0.3, 0.06], pos: [bx, 1.57, bz - 0.5 + i * 0.16] });
 
-    // Стопки папок на задних партах (как на фото: бирюзовые и синие)
+    // Приставные столы ВДОЛЬ ОКОН (по фото — на них горы папок)
+    for (const tz of [0.9, 2.3]) {
+      wood.push(
+        { args: [0.55, 0.05, 1.35], pos: [-3.62, 0.76, tz] },
+        { args: [0.5, 0.74, 0.05], pos: [-3.62, 0.37, tz - 0.63] },
+        { args: [0.5, 0.74, 0.05], pos: [-3.62, 0.37, tz + 0.63] },
+      );
+    }
+
+    // Стопки папок (бирюзовые/синие) — большие на столах у окна + пара на задней парте
     const pile = (arr: BoxPart[], x: number, z: number, n: number) => {
       for (let i = 0; i < n; i++)
         arr.push({ args: [0.34, 0.05, 0.26], pos: [x, 0.815 + i * 0.055, z], rot: [0, (i % 2 ? 0.12 : -0.1), 0] });
     };
+    const bigPile = (arr: BoxPart[], z: number, n: number) => {
+      for (let i = 0; i < n; i++)
+        arr.push({ args: [0.26, 0.055, 0.34], pos: [-3.62, 0.815 + i * 0.06, z], rot: [0, (i % 2 ? 0.14 : -0.12), 0] });
+    };
+    bigPile(teal, 0.55, 5); bigPile(blue, 1.1, 4);
+    bigPile(blue, 2.0, 5); bigPile(teal, 2.6, 4);
     pile(teal, 2.15, 2.25, 3); pile(blue, 2.6, 2.3, 2);
-    pile(blue, -0.2, 2.2, 3); pile(teal, 0.25, 2.3, 2);
+
+    // Длинный мятный регистр отопления вдоль окон (характерные трубы с фото)
+    mint.push(
+      { args: [0.09, 0.09, 3.3], pos: [-W / 2 + 0.2, 0.42, 0.05] },
+      { args: [0.09, 0.09, 3.3], pos: [-W / 2 + 0.2, 0.62, 0.05] },
+      { args: [0.05, 0.24, 0.05], pos: [-W / 2 + 0.2, 0.52, -1.55] },
+      { args: [0.05, 0.24, 0.05], pos: [-W / 2 + 0.2, 0.52, 1.6] },
+    );
 
     // Светильники в потолке (4 панели)
     for (const x of [-2.1, 2.1]) for (const z of [-1.5, 1.3])
@@ -171,7 +204,7 @@ export default function PhotoClassroom() {
     const geos = {
       wood: mergeBoxes(wood), red: mergeBoxes(red), black: mergeBoxes(black),
       white: mergeBoxes(white), dark: mergeBoxes(dark), teal: mergeBoxes(teal),
-      blue: mergeBoxes(blue), light: mergeBoxes(light),
+      blue: mergeBoxes(blue), light: mergeBoxes(light), mint: mergeBoxes(mint),
     };
     return { mats, geos };
   }, []);
@@ -227,6 +260,7 @@ export default function PhotoClassroom() {
       {geos.teal && <mesh geometry={geos.teal} material={mats.teal} />}
       {geos.blue && <mesh geometry={geos.blue} material={mats.blue} />}
       {geos.light && <mesh geometry={geos.light} material={mats.light} />}
+      {geos.mint && <mesh geometry={geos.mint} material={mats.wall} />}
 
       {/* ── Текстурированные плоскости ── */}
       {/* Меловая доска */}
@@ -238,9 +272,20 @@ export default function PhotoClassroom() {
         <planeGeometry args={[1.55, 1.08]} />
       </mesh>
       {/* Пробковый фото-стенд (мутный коллаж) */}
-      <mesh position={[W / 2 - 0.09, 1.85, 0.8]} rotation={[0, -Math.PI / 2, 0]} material={surf.cork}>
+      <mesh position={[W / 2 - 0.09, 1.85, 0.2]} rotation={[0, -Math.PI / 2, 0]} material={surf.cork}>
         <planeGeometry args={[1.78, 1.1]} />
       </mesh>
+      {/* Рулоны ватмана на задней парте (по фото) */}
+      {[0, 1, 2].map((i) => (
+        <mesh
+          key={i}
+          position={[1.15 + i * 0.02, 0.84 + i * 0.005, 2.18 + i * 0.11]}
+          rotation={[0, i * 0.06 - 0.05, Math.PI / 2]}
+          material={mats.white}
+        >
+          <cylinderGeometry args={[0.05, 0.05, 0.85, 10]} />
+        </mesh>
+      ))}
       {/* Плакаты-схемы */}
       {[-1.7, -0.6, 0.5, 1.6, 2.7].map((x) => (
         <mesh key={x} position={[x, 2.18, D / 2 - 0.1]} rotation={[0, Math.PI, 0]} material={surf.poster}>
